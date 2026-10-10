@@ -52,19 +52,51 @@ Fehlende oder verworfene Werte werden einfach **nicht** mitgeschickt – der Emp
 | `viss2mqtt.cmd` | Liste der vclient-Befehle, ein Befehl pro Zeile. Die Reihenfolge bestimmt die Platzhalter-Nummern im Template. |
 | `viss2mqtt.tpl` | vclient-Template, aus dem das Python-Skript erzeugt wird. Enthält MQTT-Konfiguration, Typumwandlung und Plausibilitätsprüfung. |
 | `viss2mqtt.sh` | Von `vclient` **erzeugtes** Skript (Beispielausgabe). Wird bei jedem Lauf überschrieben – nicht von Hand bearbeiten. |
-| `etc/vcontrold/vcontrold.xml` | Daemon-Konfiguration (TTY, Port, Units, Enums). |
-| `etc/vcontrold/vito.xml` | Gerätedefinition mit allen Befehlen und Adressen für die Vitotronic 150 KB1 (ID `2092`). |
+| `etc/vcontrold/vcontrold.xml` | Daemon-Konfiguration (TTY, Netzwerk, Logging, Units, Enums, Protokoll `KW2`). |
+| `etc/vcontrold/vito.xml` | Bereinigte Gerätedefinition für die Vitotronic 150 KB1 (ID `2092`) – nur geprüfte Befehle, Schreibzugriff auf wenige unkritische Werte beschränkt. |
+
+### vcontrold-Konfiguration im Überblick
+
+**vcontrold.xml**
+
+- Serielle Schnittstelle `/dev/ttyVITO` (udev-Symlink auf den OptoLink-Adapter)
+- Der Daemon lauscht nur auf `localhost:3002` und erlaubt ausschließlich `127.0.0.1`. Läuft vclient auf einem anderen Rechner, `<listen>` entfernen und die IP per `<allow>` freigeben.
+- Logging nach `/var/log/vcontrold/vcontrold.log` und zusätzlich ins Syslog
+- Zusätzliche Units, die von `vito.xml` benötigt werden:
+  - `UTS` – Temperatur 1 Byte, vorzeichenbehaftet (z. B. Frostgrenze −9 … 15 °C)
+  - `CO1` – 1-Byte-Zähler (z. B. Zeitkonstante der Außentemperatur)
+- Nur die Protokolle, die tatsächlich gebraucht werden; `GWG` ist entfernt
+
+**vito.xml** – die Befehle sind nach Gruppen sortiert:
+
+| Gruppe | Lesen | Schreiben |
+| ------ | ----- | --------- |
+| Gerät | Gerätetyp, Anlagenschema, Systemzeit | Systemzeit |
+| Außentemperatur | aktuell, Tiefpass, gedämpft | – |
+| Kessel | Ist, Tiefpass, Soll, Betriebszeit Standby | – |
+| Brenner | Status, Status Stufe 2, Stufe, Starts, Stunden Stufe 1/2 | – |
+| Warmwasser | Ist, Speicher, Soll, Speichervorrang | WW-Soll |
+| Pumpen / Ventil | Heizkreispumpe M1/M2, Speicherladepumpe, Zirkulation, Umschaltventil | – |
+| Betriebsarten | Betriebsart, Spar- und Partybetrieb (M1/M2) | Partybetrieb |
+| Raumsoll | normal, reduziert, Party (M1/M2) | alle drei (M1/M2) |
+| Extern / Frost / Störung | Extern Sperren/Anforderung, Frostwarnung, Sammelstörung, Fehlerhistorie | – |
+| Konfiguration | Codieradressen K51, K90, A3, A5–A8, FA, FB | – |
+| Schaltzeiten | Heizkreis M1/M2, Warmwasser, Zirkulation (Mo–So) | – |
 
 ## 4. Installation
 
 ### 4.1 vcontrold
 
-vcontrold nach Anleitung des [openv-Projekts](https://github.com/openv/vcontrold) installieren und die beiden Konfigurationsdateien übernehmen:
+vcontrold nach Anleitung des [openv-Projekts](https://github.com/openv/vcontrold) installieren, das Log-Verzeichnis anlegen und die beiden Konfigurationsdateien übernehmen:
 
 ```bash
+sudo mkdir -p /var/log/vcontrold
+sudo chown nobody:dialout /var/log/vcontrold
 sudo cp etc/vcontrold/vcontrold.xml etc/vcontrold/vito.xml /etc/vcontrold/
 sudo systemctl restart vcontrold
 ```
+
+> `vito.xml` setzt die Units `UTS` und `CO1` voraus. Beide Dateien deshalb immer zusammen austauschen.
 
 Test der Verbindung:
 
