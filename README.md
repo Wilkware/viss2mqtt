@@ -1,7 +1,7 @@
 # viss2mqtt
 
 [![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white&style=flat-square)](https://www.python.org)
-[![Version](https://img.shields.io/badge/Version-2.0.0-orange.svg?style=flat-square)](https://github.com/Wilkware/viss2mqtt)
+[![Version](https://img.shields.io/badge/Version-2.1.0-orange.svg?style=flat-square)](https://github.com/Wilkware/viss2mqtt)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Donate](https://img.shields.io/badge/Donate-PayPal-blue.svg?style=flat-square)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=8816166)
 
@@ -81,12 +81,13 @@ Beide Läufe senden auf **dasselbe Topic** mit **denselben Schlüsseln und Typen
 | ----- | ------------ |
 | `viss2mqtt.lst` | Befehlsliste des vollen Laufs (für `vclient -f`), ein Befehl pro Zeile. Die Reihenfolge bestimmt die Platzhalter-Nummern im Template. |
 | `viss2mqtt.tpl` | Template des vollen Laufs. Enthält MQTT-Konfiguration, Typumwandlung und Plausibilitätsprüfung. |
-| `viss2mqtt.sh` | Von `vclient` **erzeugtes** Skript (Beispielausgabe). Wird bei jedem Lauf überschrieben – nicht von Hand bearbeiten. |
+| `examples/viss2mqtt.sh` | Beispiel eines von `vclient` erzeugten Skripts. Auf dem Vito-Rechner entsteht `viss2mqtt.sh` bei jedem Lauf neu (per `.gitignore` ausgeschlossen). |
 | `viss2mqtt-fast.lst` | Befehlsliste des Schnelllaufs (5 Befehle). |
 | `viss2mqtt-fast.tpl` | Template des Schnelllaufs, gleiche Prüfungen und Typen wie `viss2mqtt.tpl`. |
 | `viss2mqtt.cron` | Cronjobs für beide Läufe mit Lock, wird als `/etc/cron.d/viss2mqtt` installiert. |
-| `install.sh` | Einmalige Einrichtung bzw. Umstellung einer root-Installation auf einen normalen Benutzer. |
-| `deploy.sh` | Holt Updates per Git, prüft und verteilt alle Dateien auf dem Vito-Rechner. |
+| `install.sh` | Einmalige Einrichtung nach dem Klonen nach `/opt/viss2mqtt`, auch für die Umstellung einer älteren root-Installation. |
+| `deploy.sh` | Holt Updates per Git, prüft sie und verteilt Konfiguration und Cron auf dem Vito-Rechner. |
+| `.gitignore` | Schließt die auf dem Vito-Rechner erzeugten Dateien aus (`*.sh` der Läufe, Logs, `state.json`, Lock). |
 | `.gitattributes`, `.editorconfig` | LF für alles, was auf dem Vito-Rechner läuft; schützen das Dateiende der `.lst`-Dateien. |
 | `etc/vcontrold/vcontrold.xml` | Daemon-Konfiguration (TTY, Netzwerk, Logging, Units, Enums, Protokoll `KW2`). |
 | `etc/vcontrold/vito.xml` | Bereinigte Gerätedefinition für die Vitotronic 150 KB1 (ID `2092`) – nur geprüfte Befehle, Schreibzugriff auf wenige unkritische Werte beschränkt. |
@@ -131,8 +132,7 @@ Alle Schritte auf dem Vito-Rechner als normaler Benutzer (hier `epc`) ausführen
 
 | Ort | Besitzer | Inhalt |
 | --- | -------- | ------ |
-| `~/viss2mqtt/` | epc | Git-Checkout – nur `git pull`, nichts von Hand ändern |
-| `/opt/viss2mqtt/` | epc | Laufzeit: `.lst`, `.tpl`, erzeugte `.sh`, Logs, `state.json`, Lock `vito.lock` |
+| `/opt/viss2mqtt/` | epc | Git-Checkout und Laufzeit zugleich. Versioniert: `.lst`, `.tpl`, Skripte, Konfiguration. Erzeugt und per `.gitignore` ausgeschlossen: `viss2mqtt.sh`, `viss2mqtt-fast.sh`, Logs, `state.json`, Lock `vito.lock`. Nichts von Hand ändern, nur `deploy.sh`. |
 | `/etc/vcontrold/` | root | `vcontrold.xml`, `vito.xml` (plus `.bak` der Vorversion) |
 | `/etc/cron.d/viss2mqtt` | root | beide Cronjobs, laufen als epc |
 
@@ -148,39 +148,56 @@ paho-mqtt muss für den Benutzer der Cronjobs verfügbar sein:
 python3 -c "import paho.mqtt; print(paho.mqtt.__version__)"   # muss 2.x oder neuer sein
 ```
 
-### 4.2 Erstinstallation bzw. Umstellung von root
+### 4.2 Erstinstallation
 
 ```bash
-cd ~
-git clone https://github.com/Wilkware/viss2mqtt.git
-cd viss2mqtt
-./install.sh
+sudo mkdir /opt/viss2mqtt
+sudo chown epc: /opt/viss2mqtt
+git clone https://github.com/Wilkware/viss2mqtt.git /opt/viss2mqtt
+/opt/viss2mqtt/install.sh
 ```
+
+Gibt es schon eine ältere Installation unter `/opt/viss2mqtt`, vorher die alten Cronjobs stoppen und den Ordner sichern, siehe [4.3](#43-umstellung-einer-älteren-installation).
 
 `install.sh` ist mehrfach ausführbar und führt diese Schritte aus:
 
 1. Alle viss2mqtt-Einträge aus den Crontabs von root und epc entfernen. Die bisherigen Crontabs werden als `~/viss2mqtt-crontab-*.bak` gesichert.
 2. Einen noch laufenden alten Job abwarten und das alte Lock `/tmp/vito.lock` löschen.
-3. `/opt/viss2mqtt` anlegen bzw. komplett epc übergeben. Die vorhandene `state.json` bleibt erhalten, die Zählerprüfung läuft also nahtlos weiter.
+3. `state.json` übernehmen, falls noch keine vorhanden ist: aus `--state DATEI` oder automatisch aus der neuesten Sicherung `/opt/viss2mqtt.bak-*/state.json`. Damit läuft die Zählerprüfung nahtlos weiter.
 4. `/var/log/vcontrold` für vcontrold anlegen (`nobody:dialout`), falls es fehlt.
-5. `deploy.sh` ausführen (siehe 4.3).
+5. `deploy.sh --no-pull` ausführen (siehe 4.4).
+
+### 4.3 Umstellung einer älteren Installation
+
+Bis Version 1.2 lagen die Dateien von Hand kopiert unter `/opt/viss2mqtt`, und die Jobs liefen in der Crontab von root.
+
+```bash
+# 1. alte Jobs stoppen: die beiden viss2mqtt-Zeilen löschen
+sudo crontab -e
+# 2. einen laufenden Job abwarten, dann den alten Ordner sichern
+sudo flock -w 120 /tmp/vito.lock true
+sudo mv /opt/viss2mqtt /opt/viss2mqtt.bak-$(date +%Y%m%d)
+# 3. neu aufsetzen wie in 4.2 – install.sh übernimmt state.json aus der Sicherung
+```
+
+Die alten Jobs müssen gestoppt sein, **bevor** der Ordner verschoben wird. Sonst legt der root-Job im neuen Checkout sofort wieder Dateien an, die root gehören.
 
 Ändert sich dabei die vcontrold-Konfiguration, gibt `deploy.sh` einen Hinweis aus. Den Neustart von vcontrold führst du dann selbst aus.
 
-### 4.3 Updates mit deploy.sh
+### 4.4 Updates mit deploy.sh
 
 Änderungen lokal committen und pushen, dann auf dem Vito-Rechner:
 
 ```bash
-~/viss2mqtt/deploy.sh             # git pull, prüfen, verteilen, Testlauf
-~/viss2mqtt/deploy.sh --dry-run   # nur anzeigen, was sich ändern würde
+/opt/viss2mqtt/deploy.sh             # git pull, prüfen, verteilen, Testlauf
+/opt/viss2mqtt/deploy.sh --dry-run   # nur anzeigen, was sich ändern würde
 ```
 
 | Schritt | Was passiert |
 | ------- | ------------ |
-| Git | `git pull --ff-only`. Bei lokalen Änderungen im Checkout bricht das Skript ab. Hat sich `deploy.sh` selbst geändert, startet es die neue Fassung. |
-| Prüfen | Für jede `.lst`: kein CRLF, Zeilenumbruch nach dem letzten Befehl, Anzahl Befehle = Anzahl Platzhalter im Template, jeder Befehl in `vito.xml` definiert. Außerdem müssen die vcontrold-Dateien gültiges XML sein. Schlägt eine Prüfung fehl, wird nichts verteilt. |
-| Laufzeit | `.lst`/`.tpl` nach `/opt/viss2mqtt/`, nur bei Änderungen. Das Skript nimmt dabei das Lock, damit kein Lauf halb alte und halb neue Dateien liest. |
+| Lock | Wartet auf das Lock der Cronjobs, damit kein Lauf `.lst`/`.tpl` liest, während sie sich ändern. |
+| Git | `git pull --ff-only`. Bei lokalen Änderungen an versionierten Dateien bricht das Skript vorher ab. |
+| Prüfen | Für jede `.lst`: kein CRLF, Zeilenumbruch nach dem letzten Befehl, Anzahl Befehle = Anzahl Platzhalter im Template, jeder Befehl in `vito.xml` definiert. Außerdem müssen die vcontrold-Dateien gültiges XML sein. Schlägt eine Prüfung fehl, wird der Checkout **auf den vorherigen Stand zurückgesetzt** und nichts verteilt. Danach wird das Lock freigegeben. Hat sich `deploy.sh` selbst geändert, startet es die neue Fassung. |
 | vcontrold | `vcontrold.xml`/`vito.xml` nach `/etc/vcontrold/`, die Vorversion bleibt als `.bak`. vcontrold wird **nicht** neu gestartet; das Skript zeigt den Befehl dafür an. |
 | Cron | `viss2mqtt.cron` → `/etc/cron.d/viss2mqtt`, dabei wird `@USER@` durch den aufrufenden Benutzer ersetzt. Warnt, wenn in einer Crontab noch alte Einträge stehen. |
 | Aufräumen | Hinweis auf veraltete `.cmd`-Dateien und das alte Lock in `/tmp`. |
@@ -193,7 +210,7 @@ flock -w 120 /opt/viss2mqtt/vito.lock sudo systemctl restart vcontrold
 flock -w 30 /opt/viss2mqtt/vito.lock /usr/local/bin/vclient -h localhost:3002 -c getTempA
 ```
 
-### 4.4 Cronjobs
+### 4.5 Cronjobs
 
 [viss2mqtt.cron](viss2mqtt.cron) wird von `deploy.sh` als `/etc/cron.d/viss2mqtt` installiert – nicht mit `crontab -e` eintragen:
 
@@ -206,7 +223,7 @@ flock -w 30 /opt/viss2mqtt/vito.lock /usr/local/bin/vclient -h localhost:3002 -c
 - Die Ausgabe des letzten Laufs steht in `viss2mqtt.log` bzw. `viss2mqtt-fast.log`.
 - Die Werte des vollen Laufs kommen ca. 75 s nach dem Start in Symcon an, die des Schnelllaufs nach ca. 10 s.
 
-### 4.5 Manueller Lauf
+### 4.6 Manueller Lauf
 
 ```bash
 flock -w 30 /opt/viss2mqtt/vito.lock /usr/local/bin/vclient -v -f /opt/viss2mqtt/viss2mqtt-fast.lst -t /opt/viss2mqtt/viss2mqtt-fast.tpl -x /opt/viss2mqtt/viss2mqtt-fast.sh
@@ -389,7 +406,7 @@ Name, Icon, Darstellung und Archivierung der Variablen legst du selbst in Symcon
 
 | Problem | Mögliche Ursache / Lösung |
 | ------- | ------------------------- |
-| Es kommt nichts in Symcon an | `viss2mqtt.log` / `viss2mqtt-fast.log` ansehen; Lauf manuell starten (siehe 4.5); Broker-IP und Port in den Templates kontrollieren. |
+| Es kommt nichts in Symcon an | `viss2mqtt.log` / `viss2mqtt-fast.log` ansehen; Lauf manuell starten (siehe 4.6); Broker-IP und Port in den Templates kontrollieren. |
 | `flock: failed to execute vclient` | `vclient` in der Crontab ohne absoluten Pfad. |
 | `timeout wait:vctrld>` | vcontrold nicht erreichbar oder `<allow ip="127.0.0.1"/>` blockiert IPv6 (siehe Stolperfallen). |
 | `no values received from vcontrold` | vcontrold läuft nicht, falscher Port oder OptoLink-Adapter nicht verbunden (`/dev/ttyVITO`). |
@@ -397,7 +414,7 @@ Name, Icon, Darstellung und Archivierung der Variablen legst du selbst in Symcon
 | Letzter Wert der `.lst` fehlt oder hat einen falschen Namen | Das Zeilenende der letzten Zeile fehlt. |
 | Werte landen unter falschem Namen | Reihenfolge in der `.lst` und Nummern im Template passen nicht zusammen. |
 | Variable in Symcon plötzlich neu (andere ID, Logging aus) | Der JSON-Typ des Werts hat sich geändert (siehe Stolperfallen). |
-| `Permission denied` in `/opt/viss2mqtt` | Dateien gehören noch root (alte Installation) – `./install.sh` erneut ausführen. |
+| `Permission denied` in `/opt/viss2mqtt` | Dateien gehören root – alte Jobs noch aktiv? `sudo chown -R epc: /opt/viss2mqtt`, dann `install.sh` erneut ausführen. |
 | `deploy.sh`: „Lokale Änderungen im Checkout“ | Im Checkout auf dem Vito-Rechner wurde etwas geändert – mit `git status` / `git diff` prüfen, dann `git checkout -- <datei>`. |
 | `deploy.sh` bricht bei „Prüfen“ ab | Die Meldung nennt Datei und Fehler (CRLF, fehlender Zeilenumbruch, Anzahl Befehle ≠ Platzhalter, Befehl nicht in `vito.xml`). Es wurde nichts verteilt. |
 | Werte kommen doppelt bzw. Jobs laufen doppelt | Alte Einträge in einer Crontab – `deploy.sh` warnt davor; mit `crontab -e` bzw. `sudo crontab -e` entfernen. |

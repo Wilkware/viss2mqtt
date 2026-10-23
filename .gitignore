@@ -1,0 +1,7 @@
+# Laufzeitdateien in /opt/viss2mqtt (werden von vclient/den Templates erzeugt)
+/viss2mqtt.sh
+/viss2mqtt-fast.sh
+/*.log
+/state.json
+/state.json.tmp
+/vito.lock

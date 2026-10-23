@@ -1,28 +1,29 @@
 #!/usr/bin/env bash
 # viss2mqtt – einmalige Einrichtung auf dem Vito-Rechner
 #
-# Aufruf als der Benutzer, unter dem die Cronjobs laufen sollen (z. B. epc),
-# aus dem Git-Checkout heraus:
-#   ./install.sh
+# Voraussetzung: Das Repo ist nach /opt/viss2mqtt geklont und gehört dem
+# Benutzer, unter dem die Cronjobs laufen sollen (z. B. epc).
+#   /opt/viss2mqtt/install.sh [--state DATEI] [Optionen für deploy.sh]
 #
-# Stellt eine bestehende root-Installation um und ist mehrfach ausführbar:
+# Mehrfach ausführbar:
 #   - viss2mqtt-Einträge aus den Crontabs von root und des Benutzers entfernen
 #     (Sicherung unter ~/viss2mqtt-crontab-*.bak)
-#   - /opt/viss2mqtt anlegen bzw. dem Benutzer übergeben (inkl. state.json)
 #   - altes Lock /tmp/vito.lock entfernen
+#   - state.json übernehmen, falls noch keine da ist: aus --state DATEI oder
+#     aus der neuesten Sicherung /opt/viss2mqtt.bak-*/state.json
 #   - /var/log/vcontrold für vcontrold anlegen
-#   - danach ./deploy.sh --no-pull (verteilt Dateien und /etc/cron.d/viss2mqtt)
-# Weitere Optionen werden an deploy.sh durchgereicht.
+#   - danach ./deploy.sh --no-pull (verteilt Konfiguration und /etc/cron.d/viss2mqtt)
 
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_DIR="/opt/viss2mqtt"
+STATE_FILE="$RUN_DIR/state.json"
 OLD_LOCK_FILE="/tmp/vito.lock"
 VCONTROLD_LOG_DIR="/var/log/vcontrold"
 RUN_USER="$(id -un)"
-RUN_GROUP="$(id -gn)"
 STAMP="$(date +%Y%m%d-%H%M%S)"
+STATE_SRC=""
 
 step() { printf '\n== %s\n' "$*"; }
 info() { printf '   %s\n' "$*"; }
@@ -52,12 +53,19 @@ remove_cron_entries() {
     grep '^[^#]*viss2mqtt' <<<"$current" | sed 's/^/     /'
 }
 
+if [ "${1:-}" = "--state" ]; then
+    [ $# -ge 2 ] || die "--state braucht eine Datei."
+    STATE_SRC="$2"
+    shift 2
+fi
+
 step "Voraussetzungen"
 [ "$(id -u)" -ne 0 ] || die "Nicht als root starten, sondern als der Benutzer, unter dem die Cronjobs laufen sollen."
+[ "$REPO_DIR" = "$RUN_DIR" ] || die "install.sh liegt in $REPO_DIR – das Repo muss nach $RUN_DIR geklont sein."
+[ -w "$RUN_DIR" ] || die "$RUN_DIR ist für $RUN_USER nicht beschreibbar (sudo chown -R $RUN_USER: $RUN_DIR)."
 command -v sudo >/dev/null || die "sudo nicht gefunden."
-[ -f "$REPO_DIR/deploy.sh" ] || die "deploy.sh nicht gefunden – install.sh aus dem Git-Checkout starten."
 sudo -v
-info "Benutzer $RUN_USER:$RUN_GROUP, Checkout $REPO_DIR"
+info "Benutzer $RUN_USER, Checkout $REPO_DIR"
 
 step "Alte Cronjobs"
 remove_cron_entries root sudo
@@ -70,10 +78,18 @@ if [ -e "$OLD_LOCK_FILE" ]; then
     info "altes Lock entfernt"
 fi
 
-step "Laufzeitverzeichnis $RUN_DIR"
-sudo mkdir -p "$RUN_DIR"
-sudo chown -R "$RUN_USER:$RUN_GROUP" "$RUN_DIR"
-info "gehört jetzt $RUN_USER:$RUN_GROUP"
+step "Zählerstände ($STATE_FILE)"
+if [ -z "$STATE_SRC" ]; then
+    STATE_SRC="$(ls -1d "$RUN_DIR".bak-*/state.json 2>/dev/null | sort | tail -n 1 || true)"
+fi
+if [ -f "$STATE_FILE" ]; then
+    info "vorhanden, bleibt unverändert"
+elif [ -n "$STATE_SRC" ]; then
+    sudo cat "$STATE_SRC" >"$STATE_FILE"
+    info "übernommen aus $STATE_SRC"
+else
+    info "keine Sicherung gefunden – der erste Wert jedes Zählers wird ungeprüft übernommen"
+fi
 
 step "vcontrold-Log $VCONTROLD_LOG_DIR"
 if [ -d "$VCONTROLD_LOG_DIR" ]; then

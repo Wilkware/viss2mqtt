@@ -7,6 +7,22 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-10-23
+
+Der Git-Checkout liegt direkt in `/opt/viss2mqtt` und ist zugleich das Laufzeitverzeichnis. Pfade in Cron und Templates bleiben unverändert.
+
+### Hinzugefügt
+
+- `.gitignore` für die auf dem Vito-Rechner erzeugten Dateien (`viss2mqtt.sh`, `viss2mqtt-fast.sh`, Logs, `state.json`, Lock)
+- `install.sh --state DATEI`; ohne Angabe übernimmt `install.sh` `state.json` automatisch aus der neuesten Sicherung `/opt/viss2mqtt.bak-*`
+- README: Umstellung einer älteren Installation (alte Jobs stoppen, Ordner sichern, neu klonen)
+
+### Geändert
+
+- `deploy.sh`: kein Kopieren von `.lst`/`.tpl` mehr. `git pull` läuft unter dem Lock der Cronjobs; schlägt die Prüfung danach fehl, wird der Checkout auf den vorherigen Stand zurückgesetzt
+- `deploy.sh`, `install.sh`: brechen ab, wenn sie nicht aus `/opt/viss2mqtt` gestartet werden
+- Beispielskript `viss2mqtt.sh` nach `examples/viss2mqtt.sh` verschoben, damit die bei jedem Lauf erzeugte Datei `git pull` nicht blockiert
+
 ## [2.0.0] - 2026-10-23
 
 Verteilung per Git und Betrieb als normaler Benutzer statt root.
@@ -112,7 +128,8 @@ Schnelllauf jede Minute und Abgleich mit den Erkenntnissen aus dem Betrieb.
 - `etc/vcontrold/`: ursprüngliche Initialversionen von `vcontrold.xml` und `vito.xml` (Device-ID `2092`, Protokoll `KW2`)
 - Ausführliche README
 
-[Unreleased]: https://github.com/Wilkware/viss2mqtt/compare/v2.0.0-release...HEAD
+[Unreleased]: https://github.com/Wilkware/viss2mqtt/compare/v2.1.0-feature...HEAD
+[2.1.0]: https://github.com/Wilkware/viss2mqtt/compare/v2.0.0-release...v2.1.0-feature
 [2.0.0]: https://github.com/Wilkware/viss2mqtt/compare/v1.2.0-feature...v2.0.0-release
 [1.2.0]: https://github.com/Wilkware/viss2mqtt/compare/v1.1.0-feature...v1.2.0-feature
 [1.1.0]: https://github.com/Wilkware/viss2mqtt/compare/v1.0.0-release...v1.1.0-feature
