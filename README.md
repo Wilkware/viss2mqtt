@@ -1,7 +1,7 @@
 # viss2mqtt
 
 [![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white&style=flat-square)](https://www.python.org)
-[![Version](https://img.shields.io/badge/Version-2.1.1-orange.svg?style=flat-square)](https://github.com/Wilkware/viss2mqtt)
+[![Version](https://img.shields.io/badge/Version-2.1.2-orange.svg?style=flat-square)](https://github.com/Wilkware/viss2mqtt)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Donate](https://img.shields.io/badge/Donate-PayPal-blue.svg?style=flat-square)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=8816166)
 
@@ -206,7 +206,7 @@ Die alten Jobs müssen gestoppt sein, **bevor** der Ordner verschoben wird. Sons
 Nach einer geänderten vcontrold-Konfiguration:
 
 ```bash
-flock -w 120 /opt/viss2mqtt/vito.lock sudo systemctl restart vcontrold
+flock -w 120 /opt/viss2mqtt/vito.lock sh -c 'sudo systemctl stop vcontrold; sleep 3; sudo systemctl start vcontrold'
 flock -w 30 /opt/viss2mqtt/vito.lock /usr/local/bin/vclient -h localhost:3002 -c getTempA
 ```
 
@@ -398,6 +398,7 @@ Name, Icon, Darstellung und Archivierung der Variablen legst du selbst in Symcon
 | **Ende der `.lst`** | vclient `-f` braucht `\n` am Ende der letzten Befehlszeile, sonst wird das letzte Zeichen abgeschnitten. Prüfen mit `cat -A datei.lst` (`$` markiert nur das Zeilenende). |
 | **Cron-PATH** | Ohne absoluten Pfad meldet Cron „flock: failed to execute vclient“. |
 | **Gleichzeitiger Zugriff** | Manuelle vclient-Aufrufe immer mit `flock -w 30 /opt/viss2mqtt/vito.lock …` starten. Ohne Lock am besten zwischen :02 und :04 (bzw. :07–:09), weil der volle Lauf vcontrold ab :00 ca. 75 s belegt. |
+| **`systemctl restart vcontrold`** | Der neue Prozess startet in derselben Sekunde, in der der alte beendet wird, und bricht mit `status=1` ab (Port/TTY noch belegt). systemd versucht es erst nach 2 Minuten erneut. Deshalb `stop`, 3 s warten, `start`. |
 | **vcontrold-Neustart** | Ein Cronlauf kann in dieser Zeit ausfallen. Das ist kein Fehler, der nächste Lauf holt die Werte nach. |
 | **`exit with count=0`** | Normale vclient-Ausgabe bei `-f`, kein Fehler. |
 | **Hintergrund-Testschleifen** | Mit `nohup sh -c '…'` gestartete Schleifen lassen sich nicht über den Logdateinamen beenden. Die PID mit `pgrep -af` suchen. |

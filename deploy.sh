@@ -289,7 +289,8 @@ if [ "$VCONTROLD_CHANGED" -eq 1 ]; then
         warn "Die vcontrold-Konfiguration würde geändert; aktiv wird sie erst nach einem Neustart von vcontrold."
     else
         warn "Die vcontrold-Konfiguration wurde geändert, ist aber erst nach einem Neustart aktiv:"
-        info "  flock -w 120 $LOCK_FILE sudo systemctl restart vcontrold"
+        info "  flock -w 120 $LOCK_FILE sh -c 'sudo systemctl stop vcontrold; sleep 3; sudo systemctl start vcontrold'"
+        info "  (nicht restart: der neue Prozess startet sonst, bevor Port/TTY frei sind, und bricht ab)"
         info "danach testen:"
         info "  flock -w 30 $LOCK_FILE $VCLIENT -h localhost:3002 -c getTempA"
         info "alte Fassung: $VCONTROLD_DST/*.xml.bak"

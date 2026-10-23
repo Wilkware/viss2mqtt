@@ -7,6 +7,12 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [2.1.2] - 2026-10-23
+
+### Behoben
+
+- Neustart-Hinweis für vcontrold (`deploy.sh`, README): `stop`, 3 s warten, `start` statt `systemctl restart`. Bei `restart` brach der neue Prozess sofort mit `status=1` ab, weil Port/TTY noch belegt waren, und systemd startete erst 2 Minuten später erneut
+
 ## [2.1.1] - 2026-10-23
 
 ### Behoben
@@ -134,7 +140,8 @@ Schnelllauf jede Minute und Abgleich mit den Erkenntnissen aus dem Betrieb.
 - `etc/vcontrold/`: ursprüngliche Initialversionen von `vcontrold.xml` und `vito.xml` (Device-ID `2092`, Protokoll `KW2`)
 - Ausführliche README
 
-[Unreleased]: https://github.com/Wilkware/viss2mqtt/compare/v2.1.1-patch...HEAD
+[Unreleased]: https://github.com/Wilkware/viss2mqtt/compare/v2.1.2-patch...HEAD
+[2.1.2]: https://github.com/Wilkware/viss2mqtt/compare/v2.1.1-patch...v2.1.2-patch
 [2.1.1]: https://github.com/Wilkware/viss2mqtt/compare/v2.1.0-feature...v2.1.1-patch
 [2.1.0]: https://github.com/Wilkware/viss2mqtt/compare/v2.0.0-release...v2.1.0-feature
 [2.0.0]: https://github.com/Wilkware/viss2mqtt/compare/v1.2.0-feature...v2.0.0-release
