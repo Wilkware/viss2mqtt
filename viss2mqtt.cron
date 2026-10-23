@@ -1,12 +1,19 @@
-# Crontab von root (sudo crontab -e) auf dem Rechner mit vcontrold.
-# Beide Jobs teilen sich ein Lock, damit nie zwei vclient-Laeufe gleichzeitig
+# viss2mqtt – Cronjobs für den Vito-Rechner
+#
+# deploy.sh installiert diese Datei als /etc/cron.d/viss2mqtt und ersetzt dabei
+# @USER@ durch den Benutzer, der deploy.sh ausführt. Nicht von Hand in
+# /etc/cron.d ändern – Änderungen hier vornehmen und ./deploy.sh aufrufen.
+#
+# Beide Jobs teilen sich ein Lock, damit nie zwei vclient-Läufe gleichzeitig
 # auf vcontrold/Optolink zugreifen. Der volle Lauf belegt vcontrold ca. 75 s,
-# ein Schnelllauf wartet dann bis zu 30 s und laeuft direkt danach.
-# vclient immer mit absolutem Pfad: der Cron-PATH kennt /usr/local/bin nicht
-# ("flock: failed to execute vclient").
+# ein Schnelllauf wartet dann bis zu 30 s und läuft direkt danach.
+# vclient immer mit absolutem Pfad ("flock: failed to execute vclient").
+
+SHELL=/bin/sh
+PATH=/usr/local/bin:/usr/bin:/bin
 
 # Schnelllauf: jede Minute (5 Befehle, ca. 10 s)
-* * * * * flock -w 30 /tmp/vito.lock /usr/local/bin/vclient -v -f /opt/viss2mqtt/viss2mqtt-fast.lst -t /opt/viss2mqtt/viss2mqtt-fast.tpl -x /opt/viss2mqtt/viss2mqtt-fast.sh > /opt/viss2mqtt/viss2mqtt-fast.log 2>&1
+* * * * * @USER@ flock -w 30 /opt/viss2mqtt/vito.lock /usr/local/bin/vclient -v -f /opt/viss2mqtt/viss2mqtt-fast.lst -t /opt/viss2mqtt/viss2mqtt-fast.tpl -x /opt/viss2mqtt/viss2mqtt-fast.sh > /opt/viss2mqtt/viss2mqtt-fast.log 2>&1
 
 # Voller Lauf: alle 5 Minuten (34 Befehle, ca. 75 s)
-*/5 * * * * flock -w 60 /tmp/vito.lock /usr/local/bin/vclient -v -f /opt/viss2mqtt/viss2mqtt.lst -t /opt/viss2mqtt/viss2mqtt.tpl -x /opt/viss2mqtt/viss2mqtt.sh > /opt/viss2mqtt/viss2mqtt.log 2>&1
+*/5 * * * * @USER@ flock -w 60 /opt/viss2mqtt/vito.lock /usr/local/bin/vclient -v -f /opt/viss2mqtt/viss2mqtt.lst -t /opt/viss2mqtt/viss2mqtt.tpl -x /opt/viss2mqtt/viss2mqtt.sh > /opt/viss2mqtt/viss2mqtt.log 2>&1

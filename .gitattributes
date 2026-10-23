@@ -1,2 +1,7 @@
+# Alles, was auf dem Vito-Rechner läuft, immer mit LF
+*.sh text eol=lf
+*.tpl text eol=lf
+*.cron text eol=lf
+*.xml text eol=lf
 # Befehlslisten für vclient: immer LF, Dateiende nicht verändern
 *.lst text eol=lf

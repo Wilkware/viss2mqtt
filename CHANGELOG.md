@@ -7,6 +7,31 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-10-23
+
+Verteilung per Git und Betrieb als normaler Benutzer statt root.
+
+**Umstellung nötig:** Cronjobs, Benutzer und Lock-Pfad ändern sich. Eine bestehende Installation wird einmalig mit `./install.sh` umgestellt (siehe README, Abschnitt 4.2). Topic, Schlüssel und Datentypen des MQTT-Payloads bleiben unverändert, in Symcon ist nichts anzupassen.
+
+### Hinzugefügt
+
+- `install.sh`: einmalige Einrichtung bzw. Umstellung einer root-Installation. Entfernt alte viss2mqtt-Einträge aus den Crontabs von root und Benutzer (mit Sicherung), übergibt `/opt/viss2mqtt` samt `state.json` dem Benutzer, räumt das alte Lock auf, legt `/var/log/vcontrold` an und ruft `deploy.sh` auf
+- `deploy.sh`: holt Updates per `git pull --ff-only`, prüft und verteilt alle Dateien auf dem Vito-Rechner
+  - Prüfungen vor dem Verteilen: CRLF, Zeilenumbruch nach dem letzten Befehl, Anzahl Befehle gleich Anzahl Platzhalter im Template, jeder Befehl in `vito.xml` definiert, gültiges XML
+  - `.lst`/`.tpl` nach `/opt/viss2mqtt/` unter dem gemeinsamen Lock, nur geänderte Dateien
+  - vcontrold-Konfiguration nach `/etc/vcontrold/` mit `.bak`; Neustart nur als Hinweis
+  - `viss2mqtt.cron` nach `/etc/cron.d/viss2mqtt`, Warnung bei doppelten Einträgen in alten Crontabs
+  - Testlauf des Schnelllaufs, Optionen `--dry-run`, `--no-pull`, `--no-test`
+- README: Aufbau auf dem Vito-Rechner, Erstinstallation und Updates mit den Skripten, weitere Fehlerbilder
+- README: Badges (Python, Version, Lizenz, Spende) wie bei den anderen *2mqtt-Projekten
+- `LICENSE`: MIT-Lizenz
+
+### Geändert
+
+- Cronjobs laufen als normaler Benutzer statt als root: `viss2mqtt.cron` ist jetzt eine Datei für `/etc/cron.d` mit Benutzerfeld `@USER@`, `SHELL` und `PATH`
+- Lock von `/tmp/vito.lock` nach `/opt/viss2mqtt/vito.lock` verlegt (Cron, Templates, README). Die alte Datei in `/tmp` gehört root und lässt sich von anderen Benutzern nicht verlässlich öffnen
+- `.gitattributes`: LF auch für `*.sh`, `*.tpl`, `*.cron` und `*.xml`
+
 ## [1.2.0] - 2026-10-23
 
 Schnelllauf jede Minute und Abgleich mit den Erkenntnissen aus dem Betrieb.
@@ -87,7 +112,8 @@ Schnelllauf jede Minute und Abgleich mit den Erkenntnissen aus dem Betrieb.
 - `etc/vcontrold/`: ursprüngliche Initialversionen von `vcontrold.xml` und `vito.xml` (Device-ID `2092`, Protokoll `KW2`)
 - Ausführliche README
 
-[Unreleased]: https://github.com/Wilkware/viss2mqtt/compare/v1.2.0-feature...HEAD
+[Unreleased]: https://github.com/Wilkware/viss2mqtt/compare/v2.0.0-release...HEAD
+[2.0.0]: https://github.com/Wilkware/viss2mqtt/compare/v1.2.0-feature...v2.0.0-release
 [1.2.0]: https://github.com/Wilkware/viss2mqtt/compare/v1.1.0-feature...v1.2.0-feature
 [1.1.0]: https://github.com/Wilkware/viss2mqtt/compare/v1.0.0-release...v1.1.0-feature
 [1.0.0]: https://github.com/Wilkware/viss2mqtt/releases/tag/v1.0.0-release

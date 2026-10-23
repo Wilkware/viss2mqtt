@@ -1,5 +1,10 @@
 # viss2mqtt
 
+[![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white&style=flat-square)](https://www.python.org)
+[![Version](https://img.shields.io/badge/Version-2.0.0-orange.svg?style=flat-square)](https://github.com/Wilkware/viss2mqtt)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+[![Donate](https://img.shields.io/badge/Donate-PayPal-blue.svg?style=flat-square)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=8816166)
+
 Viessmann-OptoLink-Daten über [vcontrold](https://github.com/openv/vcontrold) nach MQTT.
 
 viss2mqtt liest in regelmäßigen Abständen die Betriebsdaten einer Viessmann-Heizung (hier: **Vitotronic 150 KB1**, Device-ID `2092`, Protokoll `KW2`) über die OptoLink-Schnittstelle aus, prüft die Werte auf Plausibilität und veröffentlicht sie als **ein JSON-Objekt** auf einem MQTT-Topic. Abnehmer ist in meinem Fall der MQTT-Server in Symcon, grundsätzlich funktioniert aber jeder MQTT-Broker.
@@ -57,7 +62,7 @@ Fehlende oder verworfene Werte werden einfach **nicht** mitgeschickt – der Emp
 | Lock-Wartezeit | bis 60 s | bis 30 s |
 | MQTT-Client-ID | `viss2mqtt` | `viss2mqtt-fast` |
 
-Beide Läufe senden auf **dasselbe Topic** mit **denselben Schlüsseln und Typen** und verwenden dieselbe Plausibilitätsprüfung. Die Zählerprüfung der Brennerstarts nutzt dieselbe `state.json` mit dem Schlüssel `starts`. Über das gemeinsame Lock `/tmp/vito.lock` (`flock`) greifen nie zwei Läufe gleichzeitig auf vcontrold zu. Fällt ein Schnelllauf in einen vollen Lauf, wartet er und läuft direkt danach.
+Beide Läufe senden auf **dasselbe Topic** mit **denselben Schlüsseln und Typen** und verwenden dieselbe Plausibilitätsprüfung. Die Zählerprüfung der Brennerstarts nutzt dieselbe `state.json` mit dem Schlüssel `starts`. Über das gemeinsame Lock `/opt/viss2mqtt/vito.lock` (`flock`) greifen nie zwei Läufe gleichzeitig auf vcontrold zu. Fällt ein Schnelllauf in einen vollen Lauf, wartet er und läuft direkt danach.
 
 ## 2. Voraussetzungen
 
@@ -65,7 +70,7 @@ Beide Läufe senden auf **dasselbe Topic** mit **denselben Schlüsseln und Typen
 - OptoLink-Adapter (USB/seriell), z. B. per udev-Regel als `/dev/ttyVITO` eingebunden
 - Linux-Rechner (z. B. Raspberry Pi) mit
   - [vcontrold / vclient](https://github.com/openv/vcontrold) (hier unter `/usr/local/sbin/vcontrold` und `/usr/local/bin/vclient`)
-  - `flock` (Paket `util-linux`, meist vorinstalliert)
+  - `git` und `flock` (Paket `util-linux`, meist vorinstalliert)
   - Python 3
   - [paho-mqtt](https://pypi.org/project/paho-mqtt/) **ab Version 2.0** (wegen `mqtt.CallbackAPIVersion.VERSION2`)
 - Ein über das Netz erreichbarer MQTT-Broker, z. B. die MQTT-Server-Instanz in Symcon
@@ -79,8 +84,10 @@ Beide Läufe senden auf **dasselbe Topic** mit **denselben Schlüsseln und Typen
 | `viss2mqtt.sh` | Von `vclient` **erzeugtes** Skript (Beispielausgabe). Wird bei jedem Lauf überschrieben – nicht von Hand bearbeiten. |
 | `viss2mqtt-fast.lst` | Befehlsliste des Schnelllaufs (5 Befehle). |
 | `viss2mqtt-fast.tpl` | Template des Schnelllaufs, gleiche Prüfungen und Typen wie `viss2mqtt.tpl`. |
-| `viss2mqtt.cron` | Crontab-Einträge für beide Läufe, inklusive Lock. |
-| `.gitattributes`, `.editorconfig` | Schützen Zeilenenden und Dateiende der `.lst`-Dateien. |
+| `viss2mqtt.cron` | Cronjobs für beide Läufe mit Lock, wird als `/etc/cron.d/viss2mqtt` installiert. |
+| `install.sh` | Einmalige Einrichtung bzw. Umstellung einer root-Installation auf einen normalen Benutzer. |
+| `deploy.sh` | Holt Updates per Git, prüft und verteilt alle Dateien auf dem Vito-Rechner. |
+| `.gitattributes`, `.editorconfig` | LF für alles, was auf dem Vito-Rechner läuft; schützen das Dateiende der `.lst`-Dateien. |
 | `etc/vcontrold/vcontrold.xml` | Daemon-Konfiguration (TTY, Netzwerk, Logging, Units, Enums, Protokoll `KW2`). |
 | `etc/vcontrold/vito.xml` | Bereinigte Gerätedefinition für die Vitotronic 150 KB1 (ID `2092`) – nur geprüfte Befehle, Schreibzugriff auf wenige unkritische Werte beschränkt. |
 
@@ -118,66 +125,95 @@ Beide Läufe senden auf **dasselbe Topic** mit **denselben Schlüsseln und Typen
 
 ## 4. Installation
 
-Alle Schritte auf dem Vito-Rechner ausführen.
+Alle Schritte auf dem Vito-Rechner als normaler Benutzer (hier `epc`) ausführen. Die Skripte rufen `sudo` selbst auf, wo es nötig ist.
 
-### 4.1 vcontrold
+### Aufbau auf dem Vito-Rechner
 
-vcontrold nach Anleitung des [openv-Projekts](https://github.com/openv/vcontrold) installieren, das Log-Verzeichnis anlegen und die beiden Konfigurationsdateien übernehmen:
+| Ort | Besitzer | Inhalt |
+| --- | -------- | ------ |
+| `~/viss2mqtt/` | epc | Git-Checkout – nur `git pull`, nichts von Hand ändern |
+| `/opt/viss2mqtt/` | epc | Laufzeit: `.lst`, `.tpl`, erzeugte `.sh`, Logs, `state.json`, Lock `vito.lock` |
+| `/etc/vcontrold/` | root | `vcontrold.xml`, `vito.xml` (plus `.bak` der Vorversion) |
+| `/etc/cron.d/viss2mqtt` | root | beide Cronjobs, laufen als epc |
 
-```bash
-sudo mkdir -p /var/log/vcontrold
-sudo chown nobody:dialout /var/log/vcontrold
-sudo cp etc/vcontrold/vcontrold.xml etc/vcontrold/vito.xml /etc/vcontrold/
-sudo systemctl restart vcontrold
-```
+Die Jobs brauchen keine root-Rechte: vclient spricht nur per TCP mit vcontrold, das Skript nur per MQTT mit Symcon. Auf die serielle Schnittstelle greift ausschließlich vcontrold zu, und der Daemon wechselt dafür selbst auf `nobody:dialout`.
 
-> `vito.xml` setzt die Units `UTS` und `CO1` voraus. Beide Dateien deshalb immer zusammen austauschen.
+### 4.1 vcontrold und Python
 
-Test der Verbindung:
+vcontrold nach Anleitung des [openv-Projekts](https://github.com/openv/vcontrold) installieren und als Dienst einrichten. Die Konfiguration verteilt später `deploy.sh`.
 
-```bash
-flock -w 30 /tmp/vito.lock /usr/local/bin/vclient -h localhost:3002 -c getTempA
-```
-
-### 4.2 viss2mqtt
+paho-mqtt muss für den Benutzer der Cronjobs verfügbar sein:
 
 ```bash
-sudo mkdir -p /opt/viss2mqtt
-sudo cp viss2mqtt.lst viss2mqtt.tpl viss2mqtt-fast.lst viss2mqtt-fast.tpl /opt/viss2mqtt/
-sudo pip3 install "paho-mqtt>=2.0"
+python3 -c "import paho.mqtt; print(paho.mqtt.__version__)"   # muss 2.x oder neuer sein
 ```
 
-Die Jobs laufen als root. In `/opt/viss2mqtt` werden die erzeugten Skripte, die Logs und die Statusdatei `state.json` abgelegt.
-
-> Nach dem Übertragen das Dateiende der `.lst`-Dateien prüfen (siehe [Stolperfallen](#10-stolperfallen)).
-
-Manueller Testlauf:
+### 4.2 Erstinstallation bzw. Umstellung von root
 
 ```bash
-sudo flock -w 30 /tmp/vito.lock /usr/local/bin/vclient -v -f /opt/viss2mqtt/viss2mqtt-fast.lst -t /opt/viss2mqtt/viss2mqtt-fast.tpl -x /opt/viss2mqtt/viss2mqtt-fast.sh
+cd ~
+git clone https://github.com/Wilkware/viss2mqtt.git
+cd viss2mqtt
+./install.sh
 ```
 
-Die Ausgabe `exit with count=0` ist bei `-f` normal. Entscheidend ist, dass im erzeugten `.sh` die Werte eingesetzt sind. Das erzeugte Skript lässt sich auch einzeln starten:
+`install.sh` ist mehrfach ausführbar und führt diese Schritte aus:
+
+1. Alle viss2mqtt-Einträge aus den Crontabs von root und epc entfernen. Die bisherigen Crontabs werden als `~/viss2mqtt-crontab-*.bak` gesichert.
+2. Einen noch laufenden alten Job abwarten und das alte Lock `/tmp/vito.lock` löschen.
+3. `/opt/viss2mqtt` anlegen bzw. komplett epc übergeben. Die vorhandene `state.json` bleibt erhalten, die Zählerprüfung läuft also nahtlos weiter.
+4. `/var/log/vcontrold` für vcontrold anlegen (`nobody:dialout`), falls es fehlt.
+5. `deploy.sh` ausführen (siehe 4.3).
+
+Ändert sich dabei die vcontrold-Konfiguration, gibt `deploy.sh` einen Hinweis aus. Den Neustart von vcontrold führst du dann selbst aus.
+
+### 4.3 Updates mit deploy.sh
+
+Änderungen lokal committen und pushen, dann auf dem Vito-Rechner:
 
 ```bash
-sudo python3 /opt/viss2mqtt/viss2mqtt-fast.sh
+~/viss2mqtt/deploy.sh             # git pull, prüfen, verteilen, Testlauf
+~/viss2mqtt/deploy.sh --dry-run   # nur anzeigen, was sich ändern würde
 ```
 
-### 4.3 Cronjobs
+| Schritt | Was passiert |
+| ------- | ------------ |
+| Git | `git pull --ff-only`. Bei lokalen Änderungen im Checkout bricht das Skript ab. Hat sich `deploy.sh` selbst geändert, startet es die neue Fassung. |
+| Prüfen | Für jede `.lst`: kein CRLF, Zeilenumbruch nach dem letzten Befehl, Anzahl Befehle = Anzahl Platzhalter im Template, jeder Befehl in `vito.xml` definiert. Außerdem müssen die vcontrold-Dateien gültiges XML sein. Schlägt eine Prüfung fehl, wird nichts verteilt. |
+| Laufzeit | `.lst`/`.tpl` nach `/opt/viss2mqtt/`, nur bei Änderungen. Das Skript nimmt dabei das Lock, damit kein Lauf halb alte und halb neue Dateien liest. |
+| vcontrold | `vcontrold.xml`/`vito.xml` nach `/etc/vcontrold/`, die Vorversion bleibt als `.bak`. vcontrold wird **nicht** neu gestartet; das Skript zeigt den Befehl dafür an. |
+| Cron | `viss2mqtt.cron` → `/etc/cron.d/viss2mqtt`, dabei wird `@USER@` durch den aufrufenden Benutzer ersetzt. Warnt, wenn in einer Crontab noch alte Einträge stehen. |
+| Aufräumen | Hinweis auf veraltete `.cmd`-Dateien und das alte Lock in `/tmp`. |
+| Testlauf | Ein Schnelllauf mit demselben Aufruf wie im Cronjob. Er sendet echte Werte an Symcon. Abschalten mit `--no-test`. |
 
-Die Einträge aus [viss2mqtt.cron](viss2mqtt.cron) in die Crontab von root übernehmen (`sudo crontab -e`):
+Nach einer geänderten vcontrold-Konfiguration:
+
+```bash
+flock -w 120 /opt/viss2mqtt/vito.lock sudo systemctl restart vcontrold
+flock -w 30 /opt/viss2mqtt/vito.lock /usr/local/bin/vclient -h localhost:3002 -c getTempA
+```
+
+### 4.4 Cronjobs
+
+[viss2mqtt.cron](viss2mqtt.cron) wird von `deploy.sh` als `/etc/cron.d/viss2mqtt` installiert – nicht mit `crontab -e` eintragen:
 
 ```cron
-# Schnelllauf: jede Minute
-* * * * * flock -w 30 /tmp/vito.lock /usr/local/bin/vclient -v -f /opt/viss2mqtt/viss2mqtt-fast.lst -t /opt/viss2mqtt/viss2mqtt-fast.tpl -x /opt/viss2mqtt/viss2mqtt-fast.sh > /opt/viss2mqtt/viss2mqtt-fast.log 2>&1
-
-# Voller Lauf: alle 5 Minuten
-*/5 * * * * flock -w 60 /tmp/vito.lock /usr/local/bin/vclient -v -f /opt/viss2mqtt/viss2mqtt.lst -t /opt/viss2mqtt/viss2mqtt.tpl -x /opt/viss2mqtt/viss2mqtt.sh > /opt/viss2mqtt/viss2mqtt.log 2>&1
+* * * * *   @USER@ flock -w 30 /opt/viss2mqtt/vito.lock /usr/local/bin/vclient -v -f /opt/viss2mqtt/viss2mqtt-fast.lst -t /opt/viss2mqtt/viss2mqtt-fast.tpl -x /opt/viss2mqtt/viss2mqtt-fast.sh > /opt/viss2mqtt/viss2mqtt-fast.log 2>&1
+*/5 * * * * @USER@ flock -w 60 /opt/viss2mqtt/vito.lock /usr/local/bin/vclient -v -f /opt/viss2mqtt/viss2mqtt.lst -t /opt/viss2mqtt/viss2mqtt.tpl -x /opt/viss2mqtt/viss2mqtt.sh > /opt/viss2mqtt/viss2mqtt.log 2>&1
 ```
 
 - `vclient` **immer mit absolutem Pfad** angeben – der PATH von Cron enthält `/usr/local/bin` nicht.
 - Die Ausgabe des letzten Laufs steht in `viss2mqtt.log` bzw. `viss2mqtt-fast.log`.
 - Die Werte des vollen Laufs kommen ca. 75 s nach dem Start in Symcon an, die des Schnelllaufs nach ca. 10 s.
+
+### 4.5 Manueller Lauf
+
+```bash
+flock -w 30 /opt/viss2mqtt/vito.lock /usr/local/bin/vclient -v -f /opt/viss2mqtt/viss2mqtt-fast.lst -t /opt/viss2mqtt/viss2mqtt-fast.tpl -x /opt/viss2mqtt/viss2mqtt-fast.sh
+python3 /opt/viss2mqtt/viss2mqtt-fast.sh   # erzeugtes Skript erneut senden
+```
+
+Die Ausgabe `exit with count=0` ist bei `-f` normal. Entscheidend ist, dass im erzeugten `.sh` die Werte eingesetzt sind.
 
 ## 5. Konfiguration
 
@@ -344,7 +380,7 @@ Name, Icon, Darstellung und Archivierung der Variablen legst du selbst in Symcon
 | **Befehle ohne `<unit>`** | vcontrold ignoriert sie („command unknown“). |
 | **Ende der `.lst`** | vclient `-f` braucht `\n` am Ende der letzten Befehlszeile, sonst wird das letzte Zeichen abgeschnitten. Prüfen mit `cat -A datei.lst` (`$` markiert nur das Zeilenende). |
 | **Cron-PATH** | Ohne absoluten Pfad meldet Cron „flock: failed to execute vclient“. |
-| **Gleichzeitiger Zugriff** | Manuelle vclient-Aufrufe immer mit `flock -w 30 /tmp/vito.lock …` starten. Ohne Lock am besten zwischen :02 und :04 (bzw. :07–:09), weil der volle Lauf vcontrold ab :00 ca. 75 s belegt. |
+| **Gleichzeitiger Zugriff** | Manuelle vclient-Aufrufe immer mit `flock -w 30 /opt/viss2mqtt/vito.lock …` starten. Ohne Lock am besten zwischen :02 und :04 (bzw. :07–:09), weil der volle Lauf vcontrold ab :00 ca. 75 s belegt. |
 | **vcontrold-Neustart** | Ein Cronlauf kann in dieser Zeit ausfallen. Das ist kein Fehler, der nächste Lauf holt die Werte nach. |
 | **`exit with count=0`** | Normale vclient-Ausgabe bei `-f`, kein Fehler. |
 | **Hintergrund-Testschleifen** | Mit `nohup sh -c '…'` gestartete Schleifen lassen sich nicht über den Logdateinamen beenden. Die PID mit `pgrep -af` suchen. |
@@ -353,7 +389,7 @@ Name, Icon, Darstellung und Archivierung der Variablen legst du selbst in Symcon
 
 | Problem | Mögliche Ursache / Lösung |
 | ------- | ------------------------- |
-| Es kommt nichts in Symcon an | `viss2mqtt.log` / `viss2mqtt-fast.log` ansehen; Lauf manuell starten (siehe 4.2); Broker-IP und Port in den Templates kontrollieren. |
+| Es kommt nichts in Symcon an | `viss2mqtt.log` / `viss2mqtt-fast.log` ansehen; Lauf manuell starten (siehe 4.5); Broker-IP und Port in den Templates kontrollieren. |
 | `flock: failed to execute vclient` | `vclient` in der Crontab ohne absoluten Pfad. |
 | `timeout wait:vctrld>` | vcontrold nicht erreichbar oder `<allow ip="127.0.0.1"/>` blockiert IPv6 (siehe Stolperfallen). |
 | `no values received from vcontrold` | vcontrold läuft nicht, falscher Port oder OptoLink-Adapter nicht verbunden (`/dev/ttyVITO`). |
@@ -361,6 +397,10 @@ Name, Icon, Darstellung und Archivierung der Variablen legst du selbst in Symcon
 | Letzter Wert der `.lst` fehlt oder hat einen falschen Namen | Das Zeilenende der letzten Zeile fehlt. |
 | Werte landen unter falschem Namen | Reihenfolge in der `.lst` und Nummern im Template passen nicht zusammen. |
 | Variable in Symcon plötzlich neu (andere ID, Logging aus) | Der JSON-Typ des Werts hat sich geändert (siehe Stolperfallen). |
+| `Permission denied` in `/opt/viss2mqtt` | Dateien gehören noch root (alte Installation) – `./install.sh` erneut ausführen. |
+| `deploy.sh`: „Lokale Änderungen im Checkout“ | Im Checkout auf dem Vito-Rechner wurde etwas geändert – mit `git status` / `git diff` prüfen, dann `git checkout -- <datei>`. |
+| `deploy.sh` bricht bei „Prüfen“ ab | Die Meldung nennt Datei und Fehler (CRLF, fehlender Zeilenumbruch, Anzahl Befehle ≠ Platzhalter, Befehl nicht in `vito.xml`). Es wurde nichts verteilt. |
+| Werte kommen doppelt bzw. Jobs laufen doppelt | Alte Einträge in einer Crontab – `deploy.sh` warnt davor; mit `crontab -e` bzw. `sudo crontab -e` entfernen. |
 | `AttributeError: CallbackAPIVersion` | paho-mqtt ist älter als 2.0 – aktualisieren. |
 | Zähler werden nicht mehr aktualisiert | Nach einem Sprung wird der neue Stand erst beim zweiten konsistenten Wert übernommen; ggf. `state.json` löschen. |
 

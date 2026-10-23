@@ -3,7 +3,7 @@
 # Nur die Werte, die man zeitnah sehen will: Brennerstatus, Brennerstarts,
 # Aussentemperatur, Kesseltemperatur, Warmwassertemperatur (Ist).
 # Aufruf (cron, jede Minute, siehe viss2mqtt.cron):
-#   flock -w 30 /tmp/vito.lock /usr/local/bin/vclient -f viss2mqtt-fast.lst -t viss2mqtt-fast.tpl -x viss2mqtt-fast.sh
+#   flock -w 30 /opt/viss2mqtt/vito.lock /usr/local/bin/vclient -f viss2mqtt-fast.lst -t viss2mqtt-fast.tpl -x viss2mqtt-fast.sh
 # Platzhalter: C+Nr = Befehlsname, Nr = Zahlenwert, R+Nr = Ergebnistext.
 # Die Reihenfolge MUSS zur viss2mqtt-fast.lst passen (1 Zeile = 1 Nummer):
 #   1 getBrennerStatus, 2 getBrennerStarts, 3 getTempA, 4 getTempKist, 5 getTempWWist
