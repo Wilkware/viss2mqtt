@@ -1,0 +1,11 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+
+# Befehlslisten für vclient -f: Dateiende ("\n" + Zeile mit einem Leerzeichen)
+# muss unverändert bleiben
+[*.lst]
+insert_final_newline = false
+trim_trailing_whitespace = false

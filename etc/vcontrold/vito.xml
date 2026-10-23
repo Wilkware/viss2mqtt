@@ -8,6 +8,7 @@
   - Units korrigiert (BrennerStufe, Frostgrenze signed, Party, 1-Byte-Zähler)
   - Doppelte / irreführende Befehle (Drehzahl = Status 3906) entfernt
   - getBrennerStatus: Adresse 55D3 (liefert immer 255) -> 0842 (Test 10.10.2026: 0/1 synchron zu Brennerstufe)
+  23.10.2026: Testbefehl "get" entfernt (ohne <unit> von vcontrold ignoriert).
   Benötigt die Units CO1, UTS aus der vcontrold.xml.
 -->
 <vito>
@@ -32,9 +33,6 @@
     <command name="setSystemTime" protocmd="setaddr">
       <addr>088E</addr><len>8</len><unit>TI</unit>
       <description>Setze Systemzeit (ohne Argument: Zeit des Rechners)</description>
-    </command>
-    <command name="get" protocmd="gettestaddr">
-      <description>Testabfrage, Aufruf: get 08 00 (nicht 0800)</description>
     </command>
 
 

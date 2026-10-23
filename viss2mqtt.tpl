@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # viss2mqtt – vclient-Template fuer Vitotronic 150 KB1 -> MQTT (Symcon #36731)
-# Aufruf (cron, alle 5 min):
-#   vclient -f viss2mqtt.cmd -t viss2mqtt.tpl -x viss2mqtt.sh
+# Aufruf (cron, alle 5 min, siehe viss2mqtt.cron):
+#   flock -w 60 /tmp/vito.lock /usr/local/bin/vclient -f viss2mqtt.lst -t viss2mqtt.tpl -x viss2mqtt.sh
 # Platzhalter: C+Nr = Befehlsname, Nr = Zahlenwert, R+Nr = Ergebnistext.
-# Die Reihenfolge MUSS zur viss2mqtt.cmd passen (1 Zeile = 1 Nummer).
+# Die Reihenfolge MUSS zur viss2mqtt.lst passen (1 Zeile = 1 Nummer).
 # Alle Werte stehen in Anfuehrungszeichen und werden erst hier geparst:
 # ein fehlgeschlagener Befehl fuehrt so nicht mehr zu einem Syntaxfehler,
 # sondern der Wert wird einfach weggelassen (Symcon behaelt den alten Wert).

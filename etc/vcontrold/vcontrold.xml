@@ -10,18 +10,19 @@
         <tty>/dev/ttyVITO</tty>  <!-- udev-Symlink auf den Optolink-Adapter -->
       </serial>
       <net>
-        <!-- Läuft vcontrold auf demselben Pi wie Symcon: listen auf localhost.
-             Sonst <listen> entfernen und per <allow> auf die Symcon-IP einschränken. -->
+        <!-- vclient läuft auf demselben Rechner wie vcontrold, Symcon erhält die
+             Daten nur per MQTT. Daher nur localhost; kein <allow> nötig
+             (<allow ip="127.0.0.1"/> würde IPv6 ::1 abweisen -> "timeout wait:vctrld>").
+             Für direkten Zugriff von außen: <listen> entfernen und
+             <allow ip="192.168.x.y"/> ergänzen. -->
         <listen>localhost</listen>
         <port>3002</port>
-        <allow ip="127.0.0.1"/>
-        <!-- <allow ip="192.168.x.y"/> -->
       </net>
       <logging>
         <!-- Verzeichnis muss für nobody beschreibbar sein:
              sudo mkdir -p /var/log/vcontrold && sudo chown nobody:dialout /var/log/vcontrold -->
         <file>/var/log/vcontrold/vcontrold.log</file>
-        <syslog>y</syslog>
+        <syslog>n</syslog>  <!-- y = Startmeldung als Broadcast an alle Terminals -->
         <debug>n</debug>
       </logging>
       <device ID="2092"/>

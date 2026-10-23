@@ -7,6 +7,34 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-23
+
+Schnelllauf jede Minute und Abgleich mit den Erkenntnissen aus dem Betrieb.
+
+### Hinzugefügt
+
+- Schnelllauf `viss2mqtt-fast.lst` / `viss2mqtt-fast.tpl`: Brennerstatus, Brennerstarts, Außen-, Kessel- und Warmwassertemperatur jede Minute. Gleiches Topic, gleiche Typen und dieselbe Plausibilitätsprüfung wie der volle Lauf, gemeinsame `state.json`
+- `viss2mqtt.cron`: Crontab-Einträge für beide Läufe mit gemeinsamem Lock (`flock /tmp/vito.lock`), damit nie zwei vclient-Läufe gleichzeitig auf vcontrold zugreifen
+- `.gitattributes` und `.editorconfig`: `.lst`-Dateien immer mit LF, Dateiende und Leerzeichen am Zeilenende bleiben erhalten
+- README: Schnelllauf, Aufbau mit zwei Rechnern, Abschnitt „Stolperfallen“ (u. a. Typwechsel im JSON, `<allow>`/IPv6, Dateiende der Befehlsliste, Cron-PATH) und erweiterte Fehlersuche
+
+### Geändert
+
+- **Befehlslisten umbenannt:** `viss2mqtt.cmd` → `viss2mqtt.lst`. Die Endung `.cmd` steht unter Windows für Batch-Dateien und wurde deshalb beim Download blockiert bzw. beim Doppelklick ausgeführt. Auf dem Vito-Rechner Dateien umbenennen und Crontab anpassen
+- Cron: `vclient` mit absolutem Pfad (`/usr/local/bin/vclient`), Ausgabe in `viss2mqtt.log` bzw. `viss2mqtt-fast.log`, Jobs laufen als root
+- `vcontrold.xml`: `<syslog>n</syslog>`, weil `y` die Startmeldung als Broadcast an alle Terminals schickt
+- `vcontrold.xml`: Netzwerk-Kommentar korrigiert – vcontrold läuft auf einem eigenen Rechner, Symcon erhält die Daten nur per MQTT
+- Templates: Aufruf im Kopfkommentar mit `flock` und absolutem Pfad, Verweis auf `viss2mqtt.cron`
+
+### Behoben
+
+- `vcontrold.xml`: `<allow ip="127.0.0.1"/>` entfernt. Zusammen mit `<listen>localhost</listen>` wurde IPv6 `::1` abgewiesen („timeout wait:vctrld>“)
+- `viss2mqtt-fast.tpl`: Verweis auf die nicht vorhandene Datei `viss2mqtt-fast.cron`
+
+### Entfernt
+
+- `vito.xml`: Testbefehl `get` – ohne `<unit>` wird er von vcontrold ignoriert („command unknown“)
+
 ## [1.1.0] - 2026-10-10
 
 Überarbeitete vcontrold-Konfiguration für die Vitotronic 150 KB1.
@@ -59,6 +87,7 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 - `etc/vcontrold/`: ursprüngliche Initialversionen von `vcontrold.xml` und `vito.xml` (Device-ID `2092`, Protokoll `KW2`)
 - Ausführliche README
 
-[Unreleased]: https://github.com/Wilkware/viss2mqtt/compare/v1.1.0-release...HEAD
-[1.1.0]: https://github.com/Wilkware/viss2mqtt/compare/v1.0.0-release...v1.1.0-release
+[Unreleased]: https://github.com/Wilkware/viss2mqtt/compare/v1.2.0-feature...HEAD
+[1.2.0]: https://github.com/Wilkware/viss2mqtt/compare/v1.1.0-feature...v1.2.0-feature
+[1.1.0]: https://github.com/Wilkware/viss2mqtt/compare/v1.0.0-release...v1.1.0-feature
 [1.0.0]: https://github.com/Wilkware/viss2mqtt/releases/tag/v1.0.0-release

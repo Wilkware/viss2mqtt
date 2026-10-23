@@ -1,0 +1,2 @@
+# Befehlslisten für vclient: immer LF, Dateiende nicht verändern
+*.lst text eol=lf
