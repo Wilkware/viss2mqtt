@@ -64,7 +64,8 @@ step "Voraussetzungen"
 [ "$REPO_DIR" = "$RUN_DIR" ] || die "install.sh liegt in $REPO_DIR – das Repo muss nach $RUN_DIR geklont sein."
 [ -w "$RUN_DIR" ] || die "$RUN_DIR ist für $RUN_USER nicht beschreibbar (sudo chown -R $RUN_USER: $RUN_DIR)."
 command -v sudo >/dev/null || die "sudo nicht gefunden."
-sudo -v
+# sudo -v fragt nach dem Passwort, sobald nicht alle sudoers-Regeln NOPASSWD haben
+sudo -n true 2>/dev/null || sudo -v
 info "Benutzer $RUN_USER, Checkout $REPO_DIR"
 
 step "Alte Cronjobs"

@@ -1,7 +1,7 @@
 # viss2mqtt
 
 [![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white&style=flat-square)](https://www.python.org)
-[![Version](https://img.shields.io/badge/Version-2.1.0-orange.svg?style=flat-square)](https://github.com/Wilkware/viss2mqtt)
+[![Version](https://img.shields.io/badge/Version-2.1.1-orange.svg?style=flat-square)](https://github.com/Wilkware/viss2mqtt)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Donate](https://img.shields.io/badge/Donate-PayPal-blue.svg?style=flat-square)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=8816166)
 

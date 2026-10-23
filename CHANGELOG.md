@@ -7,6 +7,12 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-10-23
+
+### Behoben
+
+- `install.sh` fragte nach dem sudo-Passwort, obwohl sudo ohne Passwort erlaubt ist (`sudo -v` verlangt es, sobald nicht alle sudoers-Regeln `NOPASSWD` haben). Jetzt wird zuerst `sudo -n` versucht
+
 ## [2.1.0] - 2026-10-23
 
 Der Git-Checkout liegt direkt in `/opt/viss2mqtt` und ist zugleich das Laufzeitverzeichnis. Pfade in Cron und Templates bleiben unverändert.
@@ -128,7 +134,8 @@ Schnelllauf jede Minute und Abgleich mit den Erkenntnissen aus dem Betrieb.
 - `etc/vcontrold/`: ursprüngliche Initialversionen von `vcontrold.xml` und `vito.xml` (Device-ID `2092`, Protokoll `KW2`)
 - Ausführliche README
 
-[Unreleased]: https://github.com/Wilkware/viss2mqtt/compare/v2.1.0-feature...HEAD
+[Unreleased]: https://github.com/Wilkware/viss2mqtt/compare/v2.1.1-patch...HEAD
+[2.1.1]: https://github.com/Wilkware/viss2mqtt/compare/v2.1.0-feature...v2.1.1-patch
 [2.1.0]: https://github.com/Wilkware/viss2mqtt/compare/v2.0.0-release...v2.1.0-feature
 [2.0.0]: https://github.com/Wilkware/viss2mqtt/compare/v1.2.0-feature...v2.0.0-release
 [1.2.0]: https://github.com/Wilkware/viss2mqtt/compare/v1.1.0-feature...v1.2.0-feature
