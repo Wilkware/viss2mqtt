@@ -5,3 +5,6 @@
 /state.json
 /state.json.tmp
 /vito.lock
+
+# Eigene Anpassungen (haben Vorrang vor den Standarddateien, siehe README 5.1)
+/local/

@@ -13,19 +13,28 @@
 # Verteilt werden:
 #   viss2mqtt.cron        -> /etc/cron.d/viss2mqtt
 #   etc/vcontrold/*.xml   -> /etc/vcontrold/ (mit .bak, Neustart nur als Hinweis)
+#
+# Eigene Dateien unter local/ (gleicher relativer Pfad) haben Vorrang vor den
+# Standarddateien, z. B. local/etc/vcontrold/vito.xml oder local/viss2mqtt.lst.
 
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_DIR="/opt/viss2mqtt"
+LOCAL_DIR="$REPO_DIR/local"
+LOCAL_FILES=(
+    etc/vcontrold/vcontrold.xml etc/vcontrold/vito.xml
+    viss2mqtt.lst viss2mqtt.tpl viss2mqtt-fast.lst viss2mqtt-fast.tpl
+    viss2mqtt.cron viss2mqtt.ini
+)
+MQTT_INI="$LOCAL_DIR/viss2mqtt.ini"
 LOCK_FILE="$RUN_DIR/vito.lock"
 OLD_LOCK_FILE="/tmp/vito.lock"
-CRON_SRC="$REPO_DIR/viss2mqtt.cron"
 CRON_DST="/etc/cron.d/viss2mqtt"
-VCONTROLD_SRC="$REPO_DIR/etc/vcontrold"
 VCONTROLD_DST="/etc/vcontrold"
 VCONTROLD_FILES=(vcontrold.xml vito.xml)
 VCLIENT="/usr/local/bin/vclient"
+RUN_SCRIPT="$RUN_DIR/run.sh"
 RUNS=(viss2mqtt viss2mqtt-fast)
 TEST_RUN="viss2mqtt-fast"
 RUN_USER="$(id -un)"
@@ -45,7 +54,17 @@ die() {
     printf '\nFEHLER: %s\n' "$*" >&2
     exit 1
 }
-usage() { sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+# Liefert local/$1, falls vorhanden, sonst die Standarddatei aus dem Repository
+pick() {
+    if [ -f "$LOCAL_DIR/$1" ]; then
+        printf '%s\n' "$LOCAL_DIR/$1"
+    else
+        printf '%s\n' "$REPO_DIR/$1"
+    fi
+}
+# Pfad relativ zum Checkout für Meldungen
+rel() { printf '%s\n' "${1#"$REPO_DIR"/}"; }
+usage() { sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 # Kopiert $1 nach $2 (als root), wenn sich der Inhalt unterscheidet.
 # $3 = "bak": vorher Sicherung $2.bak anlegen
@@ -74,16 +93,22 @@ install_file() {
 # Gibt bei einem Fehler die Meldung aus und liefert 1.
 check_run() {
     local run="$1"
-    local lst="$REPO_DIR/$run.lst" tpl="$REPO_DIR/$run.tpl"
+    local lst tpl vito lst_name tpl_name vito_name
     local content tail_blanks cmd n_cmds n_tpl
     local -a cmds
+    lst="$(pick "$run.lst")"
+    tpl="$(pick "$run.tpl")"
+    vito="$(pick etc/vcontrold/vito.xml)"
+    lst_name="$(rel "$lst")"
+    tpl_name="$(rel "$tpl")"
+    vito_name="$(rel "$vito")"
 
     if [ ! -f "$lst" ] || [ ! -f "$tpl" ]; then
-        warn "$run.lst oder $run.tpl fehlt."
+        warn "$lst_name oder $tpl_name fehlt."
         return 1
     fi
     if [ "$(cat "$lst" "$tpl" | tr -dc '\r' | wc -c)" -gt 0 ]; then
-        warn "$run.lst oder $run.tpl enthält CRLF-Zeilenenden."
+        warn "$lst_name oder $tpl_name enthält CRLF-Zeilenenden."
         return 1
     fi
 
@@ -96,7 +121,7 @@ check_run() {
     tail_blanks="${content##*[![:blank:]]}"
     content="${content%"$tail_blanks"}"
     if [[ "$content" != *$'\n' ]]; then
-        warn "$run.lst: nach dem letzten Befehl fehlt der Zeilenumbruch."
+        warn "$lst_name: nach dem letzten Befehl fehlt der Zeilenumbruch."
         return 1
     fi
 
@@ -104,42 +129,64 @@ check_run() {
     n_cmds="${#cmds[@]}"
     n_tpl="$(grep -o '"\$C[0-9][0-9]*"' "$tpl" | sort -u | wc -l)"
     if [ "$n_cmds" -ne "$n_tpl" ]; then
-        warn "$run.lst hat $n_cmds Befehle, $run.tpl erwartet $n_tpl."
+        warn "$lst_name hat $n_cmds Befehle, $tpl_name erwartet $n_tpl."
         return 1
     fi
 
     # vcontrold kennt nur Befehle, die in vito.xml stehen
     for cmd in "${cmds[@]}"; do
-        if ! grep -q "<command name=\"$cmd\"" "$VCONTROLD_SRC/vito.xml"; then
-            warn "$run.lst: Befehl $cmd ist in vito.xml nicht definiert."
+        if ! grep -q "<command name=\"$cmd\"" "$vito"; then
+            warn "$lst_name: Befehl $cmd ist in $vito_name nicht definiert."
             return 1
         fi
     done
-    info "$run.lst: $n_cmds Befehle, passt zu $run.tpl und vito.xml"
+    info "$lst_name: $n_cmds Befehle, passt zu $tpl_name und $vito_name"
 }
 
 # Prüft alle Dateien im Checkout. Liefert 1, wenn eine Prüfung fehlschlägt.
 check_all() {
-    local run ok=0
+    local run f cron ok=0
+    local -a xmls=()
     for run in "${RUNS[@]}"; do
         check_run "$run" || ok=1
     done
-    if python3 - "${VCONTROLD_FILES[@]/#/$VCONTROLD_SRC/}" <<'EOF'; then
+    for f in "${VCONTROLD_FILES[@]}"; do
+        xmls+=("$(pick "etc/vcontrold/$f")")
+    done
+    if python3 - "${xmls[@]}" <<'EOF'; then
 import sys
 import xml.etree.ElementTree as ET
 for path in sys.argv[1:]:
     ET.parse(path)
 EOF
-        info "vcontrold.xml, vito.xml: gültiges XML"
+        info "$(rel "${xmls[0]}"), $(rel "${xmls[1]}"): gültiges XML"
     else
         warn "vcontrold-Konfiguration ist kein gültiges XML."
         ok=1
     fi
-    if grep -q '@USER@' "$CRON_SRC"; then
-        info "viss2mqtt.cron: ok"
+    cron="$(pick viss2mqtt.cron)"
+    if grep -q '@USER@' "$cron"; then
+        info "$(rel "$cron"): ok"
     else
-        warn "viss2mqtt.cron enthält keinen Platzhalter @USER@."
+        warn "$(rel "$cron") enthält keinen Platzhalter @USER@."
         ok=1
+    fi
+    if [ -f "$MQTT_INI" ]; then
+        if python3 - "$MQTT_INI" <<'EOF'; then
+import configparser
+import sys
+cfg = configparser.ConfigParser(interpolation=None)
+cfg.read(sys.argv[1])
+cfg.getint("mqtt", "port", fallback=1883)
+EOF
+            info "$(rel "$MQTT_INI"): ok"
+        else
+            warn "$(rel "$MQTT_INI") ist fehlerhaft (Abschnitt [mqtt], port als Zahl)."
+            ok=1
+        fi
+        if [ -n "$(find "$MQTT_INI" -perm /077)" ]; then
+            warn "$(rel "$MQTT_INI") ist für andere lesbar – chmod 600 $MQTT_INI"
+        fi
     fi
     return "$ok"
 }
@@ -166,6 +213,7 @@ step "Voraussetzungen"
 [ "$REPO_DIR" = "$RUN_DIR" ] || die "deploy.sh liegt in $REPO_DIR, erwartet wird der Checkout in $RUN_DIR (Pfade in Cron und Templates)."
 [ -w "$RUN_DIR" ] || die "$RUN_DIR ist für $RUN_USER nicht beschreibbar – zuerst ./install.sh ausführen."
 [ -x "$VCLIENT" ] || die "$VCLIENT nicht gefunden."
+[ -x "$RUN_SCRIPT" ] || die "$RUN_SCRIPT fehlt oder ist nicht ausführbar."
 command -v flock >/dev/null || die "flock nicht gefunden (Paket util-linux)."
 command -v python3 >/dev/null || die "python3 nicht gefunden."
 python3 - <<'EOF' || die "paho-mqtt ab Version 2.0 ist für $RUN_USER nicht verfügbar."
@@ -211,9 +259,9 @@ else
     if ! check_all; then
         if [ "$before" != "$(git -C "$REPO_DIR" rev-parse HEAD)" ]; then
             git -C "$REPO_DIR" reset --hard --quiet "$before"
-            die "Prüfung fehlgeschlagen – Checkout auf den vorherigen Stand ${before:0:7} zurückgesetzt."
+            die "Prüfung fehlgeschlagen – Checkout auf den vorherigen Stand ${before:0:7} zurückgesetzt. Passen die eigenen Dateien in local/ noch zum neuen Stand?"
         fi
-        die "Prüfung fehlgeschlagen – bitte im Repo korrigieren."
+        die "Prüfung fehlgeschlagen – bitte im Repo bzw. in local/ korrigieren."
     fi
     exec 9>&-
 
@@ -225,9 +273,19 @@ else
 fi
 info "Stand: $(git -C "$REPO_DIR" describe --tags --always)"
 
+step "Eigene Dateien ($LOCAL_DIR)"
+found=0
+for f in "${LOCAL_FILES[@]}"; do
+    if [ -f "$LOCAL_DIR/$f" ]; then
+        info "verwendet     local/$f"
+        found=1
+    fi
+done
+[ "$found" -eq 1 ] || info "keine – es gelten die Standarddateien aus dem Repository"
+
 step "vcontrold-Konfiguration ($VCONTROLD_DST)"
 for f in "${VCONTROLD_FILES[@]}"; do
-    install_file "$VCONTROLD_SRC/$f" "$VCONTROLD_DST/$f" bak
+    install_file "$(pick "etc/vcontrold/$f")" "$VCONTROLD_DST/$f" bak
     if [ "$UPDATED" -eq 1 ]; then
         VCONTROLD_CHANGED=1
     fi
@@ -238,7 +296,7 @@ step "Cron ($CRON_DST)"
 cron_tmp="$(mktemp)"
 marker="$(mktemp)"
 trap 'rm -f "$cron_tmp" "$marker"' EXIT
-sed "s/@USER@/$RUN_USER/g" "$CRON_SRC" >"$cron_tmp"
+sed "s/@USER@/$RUN_USER/g" "$(pick viss2mqtt.cron)" >"$cron_tmp"
 install_file "$cron_tmp" "$CRON_DST"
 user_cron="$(crontab -l 2>/dev/null || true)"
 if [ "$(grep -c '^[^#]*viss2mqtt' <<<"$user_cron" || true)" -gt 0 ]; then
@@ -265,9 +323,7 @@ fi
 if [ "$TEST" -eq 1 ] && [ "$DRY_RUN" -eq 0 ]; then
     step "Testlauf ($TEST_RUN)"
     # gleicher Aufruf wie im Cronjob; sendet echte Werte an Symcon
-    flock -w 120 "$LOCK_FILE" "$VCLIENT" -v \
-        -f "$RUN_DIR/$TEST_RUN.lst" -t "$RUN_DIR/$TEST_RUN.tpl" -x "$RUN_DIR/$TEST_RUN.sh" \
-        >"$RUN_DIR/$TEST_RUN.log" 2>&1 || true
+    flock -w 120 "$LOCK_FILE" "$RUN_SCRIPT" "$TEST_RUN" >"$RUN_DIR/$TEST_RUN.log" 2>&1 || true
     sed 's/^/   | /' "$RUN_DIR/$TEST_RUN.log"
     if [ ! "$RUN_DIR/$TEST_RUN.sh" -nt "$marker" ]; then
         die "$TEST_RUN.sh wurde nicht neu erzeugt – vcontrold erreichbar? (siehe Log oben)"

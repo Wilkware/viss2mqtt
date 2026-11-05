@@ -3,7 +3,8 @@
 # Nur die Werte, die man zeitnah sehen will: Brennerstatus, Brennerstarts,
 # Aussentemperatur, Kesseltemperatur, Warmwassertemperatur (Ist).
 # Aufruf (cron, jede Minute, siehe viss2mqtt.cron):
-#   flock -w 30 /opt/viss2mqtt/vito.lock /usr/local/bin/vclient -f viss2mqtt-fast.lst -t viss2mqtt-fast.tpl -x viss2mqtt-fast.sh
+#   flock -w 30 /opt/viss2mqtt/vito.lock /opt/viss2mqtt/run.sh viss2mqtt-fast
+# run.sh nimmt local/viss2mqtt-fast.lst/.tpl, falls vorhanden, sonst diese Datei.
 # Platzhalter: C+Nr = Befehlsname, Nr = Zahlenwert, R+Nr = Ergebnistext.
 # Die Reihenfolge MUSS zur viss2mqtt-fast.lst passen (1 Zeile = 1 Nummer):
 #   1 getBrennerStatus, 2 getBrennerStarts, 3 getTempA, 4 getTempKist, 5 getTempWWist
@@ -13,18 +14,27 @@
 # denselben Schluessel "starts" wie der 5-Minuten-Lauf; beide Laeufe sind per
 # flock serialisiert, schreiben also nie gleichzeitig.
 # Typen NICHT aendern: ein Typwechsel loescht die Variable im MQTT-Device.
-# Stand: 23.10.2026
+# Stand: 05.11.2026
 
+import configparser
 import json
 import os
 import time
 import paho.mqtt.client as mqtt
 
+# Standardwerte; eigene Werte in CONFIG_FILE, Abschnitt [mqtt]
+# (host, port, user, password, topic), siehe examples/viss2mqtt.ini
+CONFIG_FILE = '/opt/viss2mqtt/local/viss2mqtt.ini'
+_cfg = configparser.ConfigParser(interpolation=None)
+_cfg.read(CONFIG_FILE)  # fehlt die Datei, gelten die Standardwerte
+
 MQTT_CLID = 'viss2mqtt-fast'
-MQTT_SERV = '192.168.13.3'  # MQTT-Server (Symcon)
-MQTT_PORT = 1883
+MQTT_SERV = _cfg.get('mqtt', 'host', fallback='192.168.13.3')  # MQTT-Server (Symcon)
+MQTT_PORT = _cfg.getint('mqtt', 'port', fallback=1883)
+MQTT_USER = _cfg.get('mqtt', 'user', fallback='')  # leer = ohne Anmeldung
+MQTT_PASS = _cfg.get('mqtt', 'password', fallback='')
 MQTT_KEEP = 60
-MQTT_TOPIC = 'viss2mqtt/vito'
+MQTT_TOPIC = _cfg.get('mqtt', 'topic', fallback='viss2mqtt/vito')
 STATE_FILE = '/opt/viss2mqtt/state.json'  # letzte gueltige Zaehlerstaende
 
 
@@ -105,6 +115,8 @@ if not payload:
     raise SystemExit("viss2mqtt-fast: no values received from vcontrold")
 
 client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, MQTT_CLID)
+if MQTT_USER:
+    client.username_pw_set(MQTT_USER, MQTT_PASS or None)
 client.connect(MQTT_SERV, MQTT_PORT, MQTT_KEEP)
 client.loop_start()
 info = client.publish(MQTT_TOPIC, payload=json.dumps(payload, ensure_ascii=False), qos=0, retain=False)

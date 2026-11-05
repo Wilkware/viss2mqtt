@@ -7,6 +7,24 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-11-05
+
+Eigene Anpassungen für andere Heizungen und Broker, ohne den Checkout zu verändern.
+
+### Hinzugefügt
+
+- Verzeichnis `local/` (per `.gitignore` ausgeschlossen): Dateien mit demselben relativen Pfad haben Vorrang vor den Standarddateien – `etc/vcontrold/vcontrold.xml`, `etc/vcontrold/vito.xml`, `.lst`/`.tpl` beider Läufe, `viss2mqtt.cron`
+- MQTT-Einstellungen in `local/viss2mqtt.ini` (`host`, `port`, `user`, `password`, `topic`), Vorlage `examples/viss2mqtt.ini`. Anmeldung am Broker mit Benutzer und Passwort
+- `run.sh`: ein vclient-Lauf mit Auswahl von `.lst`/`.tpl` (`local/` vor Standard), aufgerufen von Cron und dem Testlauf in `deploy.sh`
+- `install.sh --keep-vcontrold`: übernimmt die vorhandene vcontrold-Konfiguration aus `/etc/vcontrold` nach `local/etc/vcontrold/`, damit sie nicht durch die Standarddateien ersetzt wird
+- `deploy.sh`: listet die verwendeten eigenen Dateien, prüft `local/viss2mqtt.ini` und warnt, wenn sie für andere lesbar ist
+
+### Geändert
+
+- `deploy.sh` prüft und verteilt die tatsächlich verwendeten Dateien (eigene aus `local/`, sonst Standard); Meldungen nennen den Pfad
+- `viss2mqtt.cron`: Aufruf über `run.sh` statt direkt `vclient`
+- Templates lesen die MQTT-Einstellungen aus `local/viss2mqtt.ini`; ohne die Datei gelten die bisherigen Standardwerte
+
 ## [2.1.2] - 2026-10-23
 
 ### Behoben
@@ -140,7 +158,8 @@ Schnelllauf jede Minute und Abgleich mit den Erkenntnissen aus dem Betrieb.
 - `etc/vcontrold/`: ursprüngliche Initialversionen von `vcontrold.xml` und `vito.xml` (Device-ID `2092`, Protokoll `KW2`)
 - Ausführliche README
 
-[Unreleased]: https://github.com/Wilkware/viss2mqtt/compare/v2.1.2-patch...HEAD
+[Unreleased]: https://github.com/Wilkware/viss2mqtt/compare/v2.2.0-feature...HEAD
+[2.2.0]: https://github.com/Wilkware/viss2mqtt/compare/v2.1.2-patch...v2.2.0-feature
 [2.1.2]: https://github.com/Wilkware/viss2mqtt/compare/v2.1.1-patch...v2.1.2-patch
 [2.1.1]: https://github.com/Wilkware/viss2mqtt/compare/v2.1.0-feature...v2.1.1-patch
 [2.1.0]: https://github.com/Wilkware/viss2mqtt/compare/v2.0.0-release...v2.1.0-feature
