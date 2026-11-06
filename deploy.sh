@@ -156,8 +156,17 @@ check_all() {
     if python3 - "${xmls[@]}" <<'EOF'; then
 import sys
 import xml.etree.ElementTree as ET
+from xml.parsers.expat import ErrorString
+failed = False
 for path in sys.argv[1:]:
-    ET.parse(path)
+    try:
+        ET.parse(path)
+    except ET.ParseError as err:
+        line, col = err.position
+        reason = ErrorString(err.code)
+        print(f"   {path}: Zeile {line}, Spalte {col + 1}: {reason}", file=sys.stderr)
+        failed = True
+sys.exit(1 if failed else 0)
 EOF
         info "$(rel "${xmls[0]}"), $(rel "${xmls[1]}"): gültiges XML"
     else
