@@ -7,6 +7,14 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [2.2.2] - 2026-11-18
+
+### Geändert
+
+- `deploy.sh`: Schlägt der Testlauf fehl, nennt die Meldung den Exit-Code von vclient und prüft, ob der vcontrold-Dienst läuft und `localhost:3002` erreichbar ist, mit einem passenden Hinweis statt nur „vcontrold erreichbar?“
+- `deploy.sh`: Der Neustart-Hinweis verwendet den tatsächlichen Namen des vcontrold-Dienstes (z. B. `vcontrol` statt `vcontrold`)
+- README: Hinweise zu abweichendem Dienstnamen und zu vcontrold mit `--syslog`
+
 ## [2.2.1] - 2026-11-06
 
 ### Geändert
@@ -164,7 +172,8 @@ Schnelllauf jede Minute und Abgleich mit den Erkenntnissen aus dem Betrieb.
 - `etc/vcontrold/`: ursprüngliche Initialversionen von `vcontrold.xml` und `vito.xml` (Device-ID `2092`, Protokoll `KW2`)
 - Ausführliche README
 
-[Unreleased]: https://github.com/Wilkware/viss2mqtt/compare/v2.2.1-patch...HEAD
+[Unreleased]: https://github.com/Wilkware/viss2mqtt/compare/v2.2.2-patch...HEAD
+[2.2.2]: https://github.com/Wilkware/viss2mqtt/compare/v2.2.1-patch...v2.2.2-patch
 [2.2.1]: https://github.com/Wilkware/viss2mqtt/compare/v2.2.0-feature...v2.2.1-patch
 [2.2.0]: https://github.com/Wilkware/viss2mqtt/compare/v2.1.2-patch...v2.2.0-feature
 [2.1.2]: https://github.com/Wilkware/viss2mqtt/compare/v2.1.1-patch...v2.1.2-patch

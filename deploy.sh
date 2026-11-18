@@ -33,6 +33,7 @@ OLD_LOCK_FILE="/tmp/vito.lock"
 CRON_DST="/etc/cron.d/viss2mqtt"
 VCONTROLD_DST="/etc/vcontrold"
 VCONTROLD_FILES=(vcontrold.xml vito.xml)
+VCONTROLD_PORT=3002
 VCLIENT="/usr/local/bin/vclient"
 RUN_SCRIPT="$RUN_DIR/run.sh"
 RUNS=(viss2mqtt viss2mqtt-fast)
@@ -65,6 +66,41 @@ pick() {
 # Pfad relativ zum Checkout für Meldungen
 rel() { printf '%s\n' "${1#"$REPO_DIR"/}"; }
 usage() { sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+
+# Name des systemd-Dienstes von vcontrold; je nach Installation z. B. vcontrold
+# oder vcontrol. Ohne Treffer: vcontrold
+vcontrold_service() {
+    local unit
+    unit="$(systemctl list-unit-files --type=service --no-legend 'vcontrol*.service' 2>/dev/null |
+        awk 'NR == 1 { print $1 }' || true)"
+    unit="${unit%.service}"
+    printf '%s\n' "${unit:-vcontrold}"
+}
+
+# Liefert 0, wenn vcontrold auf localhost Verbindungen annimmt (unter dem Lock)
+vcontrold_reachable() {
+    flock -w 30 "$LOCK_FILE" timeout 3 \
+        bash -c "exec 3<>/dev/tcp/localhost/$VCONTROLD_PORT" 2>/dev/null
+}
+
+# Erklärt einen fehlgeschlagenen Testlauf und bricht ab. $1 = Exit-Code von run.sh
+test_run_failed() {
+    local rc="$1" service
+    service="$(vcontrold_service)"
+    warn "vclient endete mit Exit-Code $rc, $TEST_RUN.sh wurde nicht neu erzeugt."
+    if ! systemctl is-active --quiet "$service"; then
+        warn "Der Dienst $service läuft nicht. Status: sudo systemctl status $service"
+    elif ! vcontrold_reachable; then
+        warn "Der Dienst $service läuft, nimmt auf localhost:$VCONTROLD_PORT aber keine Verbindung an."
+        info "<port> und <listen> in /etc/vcontrold/vcontrold.xml prüfen; nach Änderungen vcontrold neu starten:"
+        info "  flock -w 120 $LOCK_FILE sh -c 'sudo systemctl stop $service; sleep 3; sudo systemctl start $service'"
+    else
+        warn "vcontrold ist auf localhost:$VCONTROLD_PORT erreichbar, hat aber keine Werte geliefert."
+        info "vcontrold-Log prüfen: /var/log/vcontrold/ bzw. bei --syslog: journalctl -u $service -n 50"
+        info "Fragt noch ein anderes Programm vcontrold ab? vcontrold bedient nur einen Client gleichzeitig."
+    fi
+    die "Testlauf fehlgeschlagen (vclient-Ausgabe siehe oben, Zeilen mit |)."
+}
 
 # Kopiert $1 nach $2 (als root), wenn sich der Inhalt unterscheidet.
 # $3 = "bak": vorher Sicherung $2.bak anlegen
@@ -332,10 +368,11 @@ fi
 if [ "$TEST" -eq 1 ] && [ "$DRY_RUN" -eq 0 ]; then
     step "Testlauf ($TEST_RUN)"
     # gleicher Aufruf wie im Cronjob; sendet echte Werte an Symcon
-    flock -w 120 "$LOCK_FILE" "$RUN_SCRIPT" "$TEST_RUN" >"$RUN_DIR/$TEST_RUN.log" 2>&1 || true
+    rc=0
+    flock -w 120 "$LOCK_FILE" "$RUN_SCRIPT" "$TEST_RUN" >"$RUN_DIR/$TEST_RUN.log" 2>&1 || rc=$?
     sed 's/^/   | /' "$RUN_DIR/$TEST_RUN.log"
     if [ ! "$RUN_DIR/$TEST_RUN.sh" -nt "$marker" ]; then
-        die "$TEST_RUN.sh wurde nicht neu erzeugt – vcontrold erreichbar? (siehe Log oben)"
+        test_run_failed "$rc"
     fi
     if grep -q '"\$[CR]\{0,1\}[0-9][0-9]*"' "$RUN_DIR/$TEST_RUN.sh"; then
         die "$TEST_RUN.sh enthält nicht ersetzte Platzhalter."
@@ -354,7 +391,8 @@ if [ "$VCONTROLD_CHANGED" -eq 1 ]; then
         warn "Die vcontrold-Konfiguration würde geändert; aktiv wird sie erst nach einem Neustart von vcontrold."
     else
         warn "Die vcontrold-Konfiguration wurde geändert, ist aber erst nach einem Neustart aktiv:"
-        info "  flock -w 120 $LOCK_FILE sh -c 'sudo systemctl stop vcontrold; sleep 3; sudo systemctl start vcontrold'"
+        service="$(vcontrold_service)"
+        info "  flock -w 120 $LOCK_FILE sh -c 'sudo systemctl stop $service; sleep 3; sudo systemctl start $service'"
         info "  (nicht restart: der neue Prozess startet sonst, bevor Port/TTY frei sind, und bricht ab)"
         info "danach testen:"
         info "  flock -w 30 $LOCK_FILE $VCLIENT -h localhost:3002 -c getTempA"
