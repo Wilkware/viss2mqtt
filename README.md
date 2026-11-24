@@ -1,7 +1,7 @@
 # viss2mqtt
 
 [![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white&style=flat-square)](https://www.python.org)
-[![Version](https://img.shields.io/badge/Version-2.2.2-orange.svg?style=flat-square)](https://github.com/Wilkware/viss2mqtt)
+[![Version](https://img.shields.io/badge/Version-2.3.0-orange.svg?style=flat-square)](https://github.com/Wilkware/viss2mqtt)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Donate](https://img.shields.io/badge/Donate-PayPal-blue.svg?style=flat-square)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=8816166)
 
@@ -100,6 +100,14 @@ Beide Läufe senden auf **dasselbe Topic** mit **denselben Schlüsseln und Typen
 
 ### vcontrold-Konfiguration im Überblick
 
+> **Nur für meine Anlage.** Die mitgelieferte vcontrold-Konfiguration passt nur zur Vitotronic 150 KB1 (Device `2092`, Protokoll `KW2`) und setzt voraus:
+>
+> - der OptoLink-Adapter ist per udev-Symlink als `/dev/ttyVITO` erreichbar
+> - vcontrold startet als root und wechselt selbst auf `nobody:dialout`
+> - `/var/log/vcontrold/` gehört `nobody:dialout` (legt `install.sh` an)
+>
+> Läuft vcontrold bei dir mit einer anderen Heizung, unter einem anderen Benutzer (z. B. als Dienst mit `User=pi`) oder an einer anderen Schnittstelle, behalte deine eigene Konfiguration: `install.sh --keep-vcontrold` (siehe [4.2](#42-erstinstallation)). Mit den Standarddateien startet vcontrold dort nicht oder liefert keine Werte.
+
 **vcontrold.xml**
 
 - Serielle Schnittstelle `/dev/ttyVITO` (udev-Symlink auf den OptoLink-Adapter)
@@ -138,7 +146,7 @@ Alle Schritte auf dem Vito-Rechner als normaler Benutzer (hier `epc`) ausführen
 | --- | -------- | ------ |
 | `/opt/viss2mqtt/` | epc | Git-Checkout und Laufzeit zugleich. Versioniert: `.lst`, `.tpl`, Skripte, Konfiguration. Erzeugt und per `.gitignore` ausgeschlossen: `viss2mqtt.sh`, `viss2mqtt-fast.sh`, Logs, `state.json`, Lock `vito.lock`. Versionierte Dateien nicht von Hand ändern, nur `deploy.sh`. |
 | `/opt/viss2mqtt/local/` | epc | Eigene Anpassungen (optional, per `.gitignore` ausgeschlossen), siehe [5.1](#51-eigene-anpassungen-local). |
-| `/etc/vcontrold/` | root | `vcontrold.xml`, `vito.xml` (plus `.bak` der Vorversion) |
+| `/etc/vcontrold/` | root (bzw. wie vorgefunden) | `vcontrold.xml`, `vito.xml` (plus `.bak` der Vorversion). Besitzer, Gruppe und Rechte vorhandener Dateien behält `deploy.sh` bei. Neue Dateien bekommen `root:root 0644`. |
 | `/etc/cron.d/viss2mqtt` | root | beide Cronjobs, laufen als epc |
 
 Die Jobs brauchen keine root-Rechte: vclient spricht nur per TCP mit vcontrold, das Skript nur per MQTT mit Symcon. Auf die serielle Schnittstelle greift ausschließlich vcontrold zu, und der Daemon wechselt dafür selbst auf `nobody:dialout`.
@@ -173,7 +181,7 @@ Gibt es schon eine ältere Installation unter `/opt/viss2mqtt`, vorher die alten
 5. Nur mit `--keep-vcontrold`: die vorhandene `/etc/vcontrold/vcontrold.xml` und `vito.xml` nach `/opt/viss2mqtt/local/etc/vcontrold/` übernehmen. `deploy.sh` verteilt dann deine Dateien statt der Standarddateien. Bereits vorhandene Dateien in `local/` bleiben unverändert.
 6. `deploy.sh --no-pull` ausführen (siehe 4.4).
 
-> **Andere Heizung?** Läuft vcontrold bei dir schon mit eigener Konfiguration, installiere mit `/opt/viss2mqtt/install.sh --keep-vcontrold`. Sonst ersetzt `deploy.sh` deine Dateien durch die für die Vitotronic 150 KB1. Wurden sie bereits ersetzt, liegt deine Fassung noch als `/etc/vcontrold/*.xml.bak` vor: nach `/opt/viss2mqtt/local/etc/vcontrold/` kopieren (ohne `.bak`) und `deploy.sh` erneut aufrufen. Befehlslisten und Templates musst du dann ebenfalls an deine `vito.xml` anpassen (siehe [5.1](#51-eigene-anpassungen-local)).
+> **Andere Heizung?** Läuft vcontrold bei dir schon mit eigener Konfiguration, installiere mit `/opt/viss2mqtt/install.sh --keep-vcontrold`. Ohne diese Option bricht `deploy.sh` ab, sobald es unter `/etc/vcontrold/` eine Datei ersetzen müsste, die nicht von viss2mqtt stammt (siehe 4.4). Wurden deine Dateien mit einer älteren Version bereits ersetzt, liegt deine Fassung noch als `/etc/vcontrold/*.xml.bak` vor: nach `/opt/viss2mqtt/local/etc/vcontrold/` kopieren (ohne `.bak`) und `deploy.sh --no-pull` erneut aufrufen. Befehlslisten und Templates musst du dann ebenfalls an deine `vito.xml` anpassen (siehe [5.1](#51-eigene-anpassungen-local)).
 
 ### 4.3 Umstellung einer älteren Installation
 
@@ -207,7 +215,7 @@ Die alten Jobs müssen gestoppt sein, **bevor** der Ordner verschoben wird. Sons
 | Git | `git pull --ff-only`. Bei lokalen Änderungen an versionierten Dateien bricht das Skript vorher ab. Dateien in `local/` sind davon nicht betroffen. |
 | Prüfen | Geprüft werden die tatsächlich verwendeten Dateien, also die eigenen aus `local/`, wo vorhanden. Für jede `.lst`: kein CRLF, Zeilenumbruch nach dem letzten Befehl, Anzahl Befehle = Anzahl Platzhalter im Template, jeder Befehl in `vito.xml` definiert. Außerdem müssen die vcontrold-Dateien gültiges XML sein und eine vorhandene `local/viss2mqtt.ini` lesbar sein. Schlägt eine Prüfung fehl, wird der Checkout **auf den vorherigen Stand zurückgesetzt** und nichts verteilt. Danach wird das Lock freigegeben. Hat sich `deploy.sh` selbst geändert, startet es die neue Fassung. |
 | Eigene Dateien | Listet die Dateien aus `local/`, die statt der Standarddateien verwendet werden. |
-| vcontrold | `vcontrold.xml`/`vito.xml` (aus `local/etc/vcontrold/`, falls vorhanden) nach `/etc/vcontrold/`, die Vorversion bleibt als `.bak`. vcontrold wird **nicht** neu gestartet; das Skript zeigt den Befehl dafür an. |
+| vcontrold | `vcontrold.xml`/`vito.xml` (aus `local/etc/vcontrold/`, falls vorhanden) nach `/etc/vcontrold/`, die Vorversion bleibt als `.bak`. Besitzer, Gruppe und Rechte der vorhandenen Datei bleiben erhalten. vcontrold wird **nicht** neu gestartet; das Skript zeigt den Befehl dafür an. Gibt es keine eigene Datei in `local/` und entspricht die Datei unter `/etc/vcontrold/` keiner Fassung aus der Git-Historie, wurde sie also nicht von viss2mqtt verteilt, **bricht `deploy.sh` ab**, bevor etwas unter `/etc` geändert wird. Dann entweder `install.sh --keep-vcontrold` (eigene Fassung behalten) oder `deploy.sh --no-pull --force-vcontrold` (Standarddateien verteilen). |
 | Cron | `viss2mqtt.cron` (bzw. `local/viss2mqtt.cron`) → `/etc/cron.d/viss2mqtt`, dabei wird `@USER@` durch den aufrufenden Benutzer ersetzt. Warnt, wenn in einer Crontab noch alte Einträge stehen. |
 | Aufräumen | Hinweis auf veraltete `.cmd`-Dateien und das alte Lock in `/tmp`. |
 | Testlauf | Ein Schnelllauf mit demselben Aufruf wie im Cronjob (`run.sh viss2mqtt-fast`). Er sendet echte Werte an Symcon. Abschalten mit `--no-test`. |
@@ -484,6 +492,7 @@ Name, Icon, Darstellung und Archivierung der Variablen legst du selbst in Symcon
 | ------- | ------------------------- |
 | Es kommt nichts in Symcon an | `viss2mqtt.log` / `viss2mqtt-fast.log` ansehen; Lauf manuell starten (siehe 4.6); Broker, Port, Benutzer und Passwort in `local/viss2mqtt.ini` (bzw. die Standardwerte in den Templates) kontrollieren. |
 | `Not authorized` / Verbindung wird abgewiesen | Der Broker verlangt eine Anmeldung: `user`/`password` in `local/viss2mqtt.ini` eintragen (siehe [5.2](#52-mqtt)). |
+| `deploy.sh`: „vcontrold-Konfiguration nicht verteilt“ | Unter `/etc/vcontrold/` liegt eine eigene Konfiguration, die nicht von viss2mqtt stammt. Behalten: `/opt/viss2mqtt/install.sh --keep-vcontrold`. Durch die Standarddateien für die KB1 ersetzen: `deploy.sh --no-pull --force-vcontrold`. |
 | Eigene vcontrold-Konfiguration wurde überschrieben | Fassung aus `/etc/vcontrold/*.xml.bak` nach `/opt/viss2mqtt/local/etc/vcontrold/` kopieren (ohne `.bak`), `deploy.sh --no-pull`, vcontrold neu starten. |
 | `flock: failed to execute vclient` | `vclient` in der Crontab ohne absoluten Pfad. |
 | `timeout wait:vctrld>` | vcontrold nicht erreichbar oder `<allow ip="127.0.0.1"/>` blockiert IPv6 (siehe Stolperfallen). |

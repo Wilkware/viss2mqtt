@@ -7,6 +7,18 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-11-24
+
+### Hinzugefügt
+
+- `deploy.sh`: Schutz vor dem Überschreiben einer fremden vcontrold-Konfiguration. Gibt es keine eigene Datei in `local/` und entspricht `/etc/vcontrold/vcontrold.xml` bzw. `vito.xml` keiner Fassung aus der Git-Historie, bricht `deploy.sh` ab, bevor etwas unter `/etc` geändert wird, und nennt `install.sh --keep-vcontrold` als Lösung (bei `--dry-run` nur eine Warnung)
+- `deploy.sh --force-vcontrold`: ersetzt eine fremde vcontrold-Konfiguration trotzdem durch die Standarddateien
+
+### Geändert
+
+- `deploy.sh`: Beim Ersetzen der vcontrold-Dateien bleiben Besitzer, Gruppe und Rechte der vorhandenen Datei erhalten (bisher immer `root:root 0644`). Neue Dateien bekommen weiterhin `root:root 0644`.
+- README: Hinweis, dass die mitgelieferte vcontrold-Konfiguration nur für die Vitotronic 150 KB1 mit `/dev/ttyVITO` und `nobody:dialout` gilt
+
 ## [2.2.2] - 2026-11-18
 
 ### Geändert
@@ -172,7 +184,8 @@ Schnelllauf jede Minute und Abgleich mit den Erkenntnissen aus dem Betrieb.
 - `etc/vcontrold/`: ursprüngliche Initialversionen von `vcontrold.xml` und `vito.xml` (Device-ID `2092`, Protokoll `KW2`)
 - Ausführliche README
 
-[Unreleased]: https://github.com/Wilkware/viss2mqtt/compare/v2.2.2-patch...HEAD
+[Unreleased]: https://github.com/Wilkware/viss2mqtt/compare/v2.3.0-feature...HEAD
+[2.3.0]: https://github.com/Wilkware/viss2mqtt/compare/v2.2.2-patch...v2.3.0-feature
 [2.2.2]: https://github.com/Wilkware/viss2mqtt/compare/v2.2.1-patch...v2.2.2-patch
 [2.2.1]: https://github.com/Wilkware/viss2mqtt/compare/v2.2.0-feature...v2.2.1-patch
 [2.2.0]: https://github.com/Wilkware/viss2mqtt/compare/v2.1.2-patch...v2.2.0-feature

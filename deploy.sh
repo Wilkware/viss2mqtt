@@ -9,6 +9,8 @@
 #   ./deploy.sh --dry-run    nur anzeigen, was sich ändern würde
 #   ./deploy.sh --no-pull    ohne git pull
 #   ./deploy.sh --no-test    ohne Testlauf
+#   ./deploy.sh --force-vcontrold
+#                            fremde vcontrold-Konfiguration trotzdem ersetzen
 #
 # Verteilt werden:
 #   viss2mqtt.cron        -> /etc/cron.d/viss2mqtt
@@ -16,6 +18,8 @@
 #
 # Eigene Dateien unter local/ (gleicher relativer Pfad) haben Vorrang vor den
 # Standarddateien, z. B. local/etc/vcontrold/vito.xml oder local/viss2mqtt.lst.
+# Stammt /etc/vcontrold/*.xml nicht von viss2mqtt und gibt es keine eigene
+# Datei in local/, bricht deploy.sh ab, statt sie zu ersetzen.
 
 set -euo pipefail
 
@@ -43,6 +47,7 @@ RUN_USER="$(id -un)"
 DRY_RUN=0
 PULL=1
 TEST=1
+FORCE_VCONTROLD=0
 CHANGES=0
 UPDATED=0
 VCONTROLD_CHANGED=0
@@ -65,7 +70,7 @@ pick() {
 }
 # Pfad relativ zum Checkout für Meldungen
 rel() { printf '%s\n' "${1#"$REPO_DIR"/}"; }
-usage() { sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 # Name des systemd-Dienstes von vcontrold; je nach Installation z. B. vcontrold
 # oder vcontrol. Ohne Treffer: vcontrold
@@ -102,13 +107,50 @@ test_run_failed() {
     die "Testlauf fehlgeschlagen (vclient-Ausgabe siehe oben, Zeilen mit |)."
 }
 
+# Liefert 0, wenn /etc/vcontrold/$1 einer Fassung von etc/vcontrold/$1 aus der
+# Git-Historie entspricht, also von viss2mqtt verteilt wurde
+vcontrold_known() {
+    local f="$1" blob blobs
+    blob="$(sudo cat "$VCONTROLD_DST/$f" | git -C "$REPO_DIR" hash-object --stdin)" || return 1
+    blobs="$(git -C "$REPO_DIR" log --format= --raw --no-abbrev -- "etc/vcontrold/$f" | awk '{ print $4 }')"
+    grep -qxF "$blob" <<<"$blobs"
+}
+
+# Bricht ab (bei --dry-run: warnt), wenn eine vcontrold-Datei ersetzt würde, die
+# nicht von viss2mqtt stammt und für die es keine eigene Datei in local/ gibt
+check_vcontrold_foreign() {
+    local f dst
+    local -a foreign=()
+    [ "$FORCE_VCONTROLD" -eq 0 ] || return 0
+    for f in "${VCONTROLD_FILES[@]}"; do
+        dst="$VCONTROLD_DST/$f"
+        [ ! -f "$LOCAL_DIR/etc/vcontrold/$f" ] || continue
+        sudo test -f "$dst" || continue
+        ! sudo cmp -s "$REPO_DIR/etc/vcontrold/$f" "$dst" || continue
+        vcontrold_known "$f" || foreign+=("$dst")
+    done
+    [ "${#foreign[@]}" -gt 0 ] || return 0
+
+    warn "Diese vcontrold-Konfiguration stammt nicht von viss2mqtt und würde ersetzt:"
+    printf '     %s\n' "${foreign[@]}" >&2
+    info "Die Standarddateien passen nur zur Vitotronic 150 KB1 (Device 2092, /dev/ttyVITO,"
+    info "vcontrold als nobody:dialout, Log nach /var/log/vcontrold)."
+    info "Eigene Konfiguration behalten (übernimmt sie nach local/etc/vcontrold/):"
+    info "  $RUN_DIR/install.sh --keep-vcontrold"
+    info "Durch die Standarddateien ersetzen (Vorversion bleibt als .bak):"
+    info "  $RUN_DIR/deploy.sh --no-pull --force-vcontrold"
+    [ "$DRY_RUN" -eq 1 ] || die "vcontrold-Konfiguration nicht verteilt."
+}
+
 # Kopiert $1 nach $2 (als root), wenn sich der Inhalt unterscheidet.
-# $3 = "bak": vorher Sicherung $2.bak anlegen
+# $3 = "bak": vorher Sicherung $2.bak anlegen und Besitzer, Gruppe und Rechte
+#      einer vorhandenen $2 beibehalten (sonst root:root 0644)
 # Setzt UPDATED=1, wenn kopiert wurde (bei --dry-run: kopiert würde).
 install_file() {
     local src="$1" dst="$2" backup="${3:-}"
+    local uid=0 gid=0 mode=644 owner=root group=root
     UPDATED=0
-    if [ -f "$dst" ] && cmp -s "$src" "$dst"; then
+    if sudo test -f "$dst" && sudo cmp -s "$src" "$dst"; then
         info "unverändert   $dst"
         return 0
     fi
@@ -118,11 +160,12 @@ install_file() {
         info "würde ändern  $dst"
         return 0
     fi
-    if [ "$backup" = "bak" ] && [ -f "$dst" ]; then
+    if [ "$backup" = "bak" ] && sudo test -f "$dst"; then
         sudo cp -p "$dst" "$dst.bak"
+        read -r uid gid mode owner group < <(sudo stat -c '%u %g %a %U %G' "$dst")
     fi
-    sudo install -m 0644 -o root -g root "$src" "$dst"
-    info "aktualisiert  $dst"
+    sudo install -m "$mode" -o "$uid" -g "$gid" "$src" "$dst"
+    info "aktualisiert  $dst ($owner:$group $mode)"
 }
 
 # Prüft eine Befehlsliste und ihr Template auf die bekannten Stolperfallen.
@@ -241,6 +284,7 @@ while [ $# -gt 0 ]; do
         -n | --dry-run) DRY_RUN=1 ;;
         --no-pull) PULL=0 ;;
         --no-test) TEST=0 ;;
+        --force-vcontrold) FORCE_VCONTROLD=1 ;;
         -h | --help)
             usage
             exit 0
@@ -329,6 +373,7 @@ done
 [ "$found" -eq 1 ] || info "keine – es gelten die Standarddateien aus dem Repository"
 
 step "vcontrold-Konfiguration ($VCONTROLD_DST)"
+check_vcontrold_foreign
 for f in "${VCONTROLD_FILES[@]}"; do
     install_file "$(pick "etc/vcontrold/$f")" "$VCONTROLD_DST/$f" bak
     if [ "$UPDATED" -eq 1 ]; then
